@@ -6,11 +6,14 @@
 #
 # No OnFailure=: the laptop's homelab-failure-notify has no ntfy credentials,
 # so it would fail silently. The healthchecks.io check `vault-commit` is the
-# alert instead -- the script pings only after a successful push.
+# alert instead -- the script pings it after a successful push, and pings
+# /fail itself when a run fails.
 [Unit]
 Description=Weekly Obsidian vault commit and push to Forgejo
 
 [Service]
 Type=oneshot
-TimeoutStartSec=300
+# The script retries the push for about ten minutes, because the timer can
+# fire in the same second the laptop resumes. Leave room for slow attempts.
+TimeoutStartSec=1800
 ExecStart=%h/Projects/_personal/homelab/scripts/vault-commit.sh
