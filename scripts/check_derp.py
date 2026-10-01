@@ -365,8 +365,9 @@ def self_test():
     assert derpmap_ipv4("        ipv4: 5.6.7.8  # the relay\n") == "5.6.7.8"
 
     # --- the relaying check, against the addresses actually observed ---
-    # Clean: netcheck agrees with the pinned address.
-    assert relaying_problem("203.0.113.7:41641", "203.0.113.7") is None
+    # Clean: netcheck agrees with the pinned address. A routable address on
+    # purpose: 203.0.113.0/24 is documentation space, which is not global.
+    assert relaying_problem("5.6.7.8:41641", "5.6.7.8") is None
     # The live defect, 2026-09-22: the router's hairpin SNAT.
     assert "NOT routable" in relaying_problem("10.0.0.1:43721", "203.0.113.7")
     # The other observed wrong answer: the docker bridge gateway.
