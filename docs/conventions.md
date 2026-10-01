@@ -286,16 +286,16 @@ git push origin main
 cd /opt/homelab && git pull
 ```
 
-`homelab` authenticates with a **read-only deploy key**
-(selected by `Host github.com` in its `~/.ssh/config`). It cannot push, deliberately:
-production consumes the repo, it does not author it. A `git push` from `homelab`
-fails with "make sure you have the correct access rights", and that is the
-correct outcome, not a misconfiguration.
+`homelab` clones this repo over **HTTPS with no credentials**, which a public
+repo allows. It cannot push, deliberately: production consumes the repo, it
+does not author it. A `git push` from `homelab` asks for a username it does not
+have, and that is the correct outcome, not a misconfiguration.
 
-Deploy keys are per-repository, so this key grants nothing else in the
-account. It has no passphrase, because an unattended `git pull` cannot answer
-a prompt; the read-only scope is what limits the blast radius if the disk is
-lost.
+A private checkout, such as the site data in `SITE_DIR`, uses a **read-only
+deploy key** instead. Deploy keys are per-repository, so the key grants
+nothing else in the account. It has no passphrase, because an unattended
+`git pull` cannot answer a prompt; the read-only scope is what limits the
+blast radius if the disk is lost.
 
 Pulling does not restart anything. Compose files change on disk only; the
 running containers keep their old definition until an explicit

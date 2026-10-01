@@ -8,7 +8,6 @@
 # NOT done here, on purpose:
 #   - the Fixed IP on the router (UniFi API, see pve-log) -- a new VM boots on DHCP
 #     first, so the play stops after the clone and says so
-#   - the GitHub deploy key registration (needs your gh login)
 #   - .env files, volume restore, starting stacks -- secrets and data,
 #     see docs/recovery.md and scripts/restore_volumes.sh
 
@@ -195,18 +194,8 @@
     - name: Apply handlers before the networks need Docker
       ansible.builtin.meta: flush_handlers
 
-    # Repo: the deploy key is registered by hand (pve-log, "repo cloned").
-    - name: GitHub deploy key present
-      become: false
-      ansible.builtin.stat:
-        path: ~/.ssh/homelab_github-homelab
-      register: deploy_key
-
-    - name: Stop if the deploy key is missing
-      when: not deploy_key.stat.exists
-      ansible.builtin.fail:
-        msg: Create and register ~/.ssh/homelab_github-homelab first -- see $SITE_DIR/docs/pve-log.md.
-
+    # Repo: public, so `homelab_repo` is an HTTPS URL and needs no key. A
+    # private fork wants a deploy key registered by hand first, and an SSH URL.
     - name: /opt/homelab owned by {{ ansible_user }}
       ansible.builtin.file:
         path: /opt/homelab
@@ -221,7 +210,6 @@
         repo: "{{ homelab_repo }}"
         dest: /opt/homelab
         update: false
-        accept_hostkey: true
 
     # host-setup.md 11, 12
     - name: External Docker networks

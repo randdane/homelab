@@ -19,5 +19,5 @@ all:
           vm_disk: 64G
           homelab_host: homelab
   vars:
-    homelab_repo: git@github.com:example/homelab.git
+    homelab_repo: https://github.com/example/homelab.git
     ansible_ssh_common_args: -o IdentitiesOnly=yes
