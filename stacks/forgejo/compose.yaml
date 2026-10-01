@@ -1,0 +1,126 @@
+name: forgejo
+
+x-homelab:
+  lifecycle: production
+  # always-on, not server: this runs on homelab. `server` is the spare server, which is
+  # powered off most of the time -- a git remote that is only sometimes
+  # reachable is not one you would push the vault to.
+  host: always-on
+  exposure: lan
+  data: precious
+  purpose: A self-hosted remote I own, for the vault and this repo
+  prerequisites: none
+  description: Forgejo (Gitea fork), Postgres-backed. Replaces the gitea stack.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: forgejo-postgres
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - POSTGRES_DB=forgejo
+      - POSTGRES_USER=forgejo
+      - POSTGRES_PASSWORD=${FORGEJO_DB_PASSWORD:?set FORGEJO_DB_PASSWORD in .env}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "forgejo", "-U", "forgejo"]
+      interval: 10s
+      timeout: 45s
+      retries: 10
+
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:16.0.3
+    container_name: forgejo
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - USER_UID=${PUID:-1000}
+      - USER_GID=${PGID:-1000}
+      # Inherited lesson from the gitea stack this replaces: without these,
+      # the first-run installer quietly sets itself up on SQLite, ignores the
+      # Postgres beside it, and there is no way back once install completes.
+      # Forgejo honours the FORGEJO__ prefix (GITEA__ also works, for now).
+      - FORGEJO__database__DB_TYPE=postgres
+      - FORGEJO__database__HOST=forgejo-postgres:5432
+      - FORGEJO__database__NAME=forgejo
+      - FORGEJO__database__USER=forgejo
+      - FORGEJO__database__PASSWD=${FORGEJO_DB_PASSWORD:?set FORGEJO_DB_PASSWORD in .env}
+      # Clone URLs and the SSO redirect are built from this. Left as
+      # localhost for the laptop test; on the server it is the vhost,
+      # https://forgejo.<PUBLIC_DOMAIN>/.
+      - FORGEJO__server__ROOT_URL=${FORGEJO_ROOT_URL:-http://localhost:3002/}
+      - FORGEJO__server__SSH_PORT=${SSH_PORT:-3003}
+      # The host advertised in ssh:// clone URLs. Defaults to localhost, which
+      # is wrong everywhere except the container host -- same trap as ROOT_URL.
+      - FORGEJO__server__SSH_DOMAIN=${HOMELAB_HOST:-localhost}
+      # Personal instance: nobody should be able to sign themselves up.
+      - FORGEJO__service__DISABLE_REGISTRATION=true
+      # Skip the web installer entirely. It is a click-through that cannot be
+      # reproduced on another host, and leaving it unlocked means anyone who
+      # reaches the port before you do gets to define the admin account.
+      # Schema is created by the startup migration; make the admin with:
+      #   docker exec -u git forgejo forgejo admin user create \
+      #     --admin --username <you> --email <you@example> --random-password
+      - FORGEJO__security__INSTALL_LOCK=true
+      # Let `git push` create the repo on first push, under my own namespace.
+      # Without this, pushing to a repo that does not exist yet returns 403 --
+      # not 404, because Forgejo will not confirm whether a private repo exists
+      # to someone who may not see it. That reads like a credentials problem
+      # and is not one; it cost a debugging session on 2026-08-28.
+      - FORGEJO__repository__ENABLE_PUSH_CREATE_USER=true
+      # Pinned deliberately rather than left to the upstream default (which is
+      # currently true). Whether a repo created by an accidental push is
+      # private is not something to infer from someone else's default.
+      - FORGEJO__repository__DEFAULT_PUSH_CREATE_PRIVATE=true
+      # SSO (auth source `authentik`, created in the database) links by
+      # email instead of asking for the local password on a link page.
+      # Auto-registration tries to create the user, hits "email already
+      # used", and ACCOUNT_LINKING=auto links to that account instead
+      # (routers/web/auth/auth.go, v16.0.3). DISABLE_REGISTRATION is not
+      # consulted on this path, so a new address would get a new account;
+      # only Authentik's forgejo-users group can get that far.
+      - FORGEJO__oauth2_client__ENABLE_AUTO_REGISTRATION=true
+      - FORGEJO__oauth2_client__ACCOUNT_LINKING=auto
+    ports:
+      - "${PORT:-3002}:3000"
+      - "${SSH_PORT:-3003}:22"
+    # `edge` so Caddy reaches it for the forgejo.<PUBLIC_DOMAIN> vhost, so
+    # uptime-kuma can reach /api/healthz by container name, and so the SSO
+    # backend reaches Authentik (@authentik_oidc_internal). Before it joined,
+    # the git remote for the vault and this repo was the one production stack
+    # nothing would report down.
+    networks:
+      - default
+      - edge
+    volumes:
+      - forgejo-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      homepage.group: Ops
+      homepage.name: Forgejo
+      homepage.description: Self-hosted git remote
+      homepage.href: https://forgejo.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      homepage.icon: forgejo
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  pg-data:
+  forgejo-data:
+
+networks:
+  edge:
+    external: true

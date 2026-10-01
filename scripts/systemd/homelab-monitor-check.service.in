@@ -1,0 +1,35 @@
+# Template. Do NOT symlink this file into systemd — it is not a valid unit
+# until scripts/install-systemd.sh substitutes the @PLACEHOLDERS@. Same
+# reasoning as homelab-status.service.in: the repo lives at two paths and
+# WorkingDirectory= does not expand environment variables.
+[Unit]
+Description=Check Uptime Kuma's monitors are reachable and not stale-red
+Documentation=file:@REPO@/stacks/uptime-kuma/README.md
+
+# A failed unit is otherwise silent: systemd marks it failed and nothing
+# tells anyone. %n expands to this unit's own name.
+OnFailure=homelab-failure-notify@%n.service
+
+# Kuma must be up to be asked. Without this the check races dockerd on a
+# boot and reports "could not check" every morning, which is exit 2 and
+# therefore quiet — but a check that never runs is not a check.
+After=docker.service
+Wants=docker.service
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+@USERLINES@
+# systemd services do not source .bashrc, so uv (typically installed to
+# ~/.local/bin) is not on PATH unless listed explicitly here.
+Environment=PATH=@PATH@
+Environment=HOME=@HOME@
+# check_monitors.py exits 2 when it cannot reach the container at all —
+# docker down, Kuma restarting, mid-backup. That is "not checked", not "a
+# broken monitor", and failing on it during the nightly backup window would
+# train this unit to be ignored. Only exit 1 marks the unit failed.
+SuccessExitStatus=2
+# Probes every monitor with a 10s curl timeout, serially. Five monitors
+# cannot exceed this; a hang in docker exec is caught by the script's own
+# per-probe timeout well before it.
+TimeoutStartSec=300
+ExecStart=@UV@ run scripts/check_monitors.py

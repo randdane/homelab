@@ -1,0 +1,27 @@
+# Template. Do NOT symlink this file into systemd — it is not a valid unit
+# until scripts/install-systemd.sh substitutes the @PLACEHOLDERS@.
+#
+# Instance unit. Every homelab unit that matters carries
+#   OnFailure=homelab-failure-notify@%n.service
+# so %i here is the name of the unit that failed.
+[Unit]
+Description=Report %i failing to the phone through ntfy
+Documentation=file:@REPO@/scripts/notify.py
+# notify.py retries for up to 3 minutes, and that is deliberate. An earlier
+# version of this comment said "do not add a retry loop that hides a host with
+# no connectivity". That still holds for a host with no network: the retry is
+# bounded, so an offline host still fails within 3 minutes and the journal is
+# the record. What changed is that ntfy is stopped on schedule for the nightly
+# backup, and a single attempt in that window would drop the alert.
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+@USERLINES@
+Environment=PATH=@PATH@
+Environment=HOME=@HOME@
+# notify.py's RETRY_SECONDS (180) plus uv start-up and the systemctl/journalctl
+# calls in unit_report (15 s + 20 s timeouts). 90 killed the retry halfway.
+TimeoutStartSec=300
+ExecStart=@UV@ run @REPO@/scripts/notify.py --unit %i

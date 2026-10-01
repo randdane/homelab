@@ -1,0 +1,136 @@
+name: wger
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: precious
+  purpose: Workout logging -- the training history that makes progress visible
+  prerequisites: SECRET_KEY, SIGNING_KEY and DJANGO_DB_PASSWORD in .env
+  description: Django app behind its own nginx, which is required rather than optional
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: wger-postgres
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - POSTGRES_DB=wger
+      - POSTGRES_USER=wger
+      - POSTGRES_PASSWORD=${DJANGO_DB_PASSWORD:?set DJANGO_DB_PASSWORD in .env}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "wger", "-U", "wger"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  cache:
+    image: redis:7-alpine
+    container_name: wger-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    # 2.6, not :latest -- upstream's latest tag is currently 2.7.0a2, an
+    # alpha. A fitness log is not the place to run pre-release code.
+    image: wger/server:2.6
+    container_name: wger
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - TIME_ZONE=${TZ:-America/Chicago}
+      # Django signs sessions and tokens with these. Defaults would mean
+      # forgeable sessions.
+      - SECRET_KEY=${SECRET_KEY:?set SECRET_KEY in .env}
+      - SIGNING_KEY=${SIGNING_KEY:?set SIGNING_KEY in .env}
+      - DJANGO_DB_ENGINE=django.db.backends.postgresql
+      - DJANGO_DB_DATABASE=wger
+      - DJANGO_DB_USER=wger
+      - DJANGO_DB_PASSWORD=${DJANGO_DB_PASSWORD:?set DJANGO_DB_PASSWORD in .env}
+      - DJANGO_DB_HOST=db
+      - DJANGO_DB_PORT=5432
+      - DJANGO_PERFORM_MIGRATIONS=True
+      - WGER_INSTANCE=${WGER_INSTANCE:-http://localhost:8093}
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-False}
+      - ALLOW_GUEST_USERS=${ALLOW_GUEST_USERS:-False}
+      # Celery off: it exists to bulk-sync the public exercise database, and
+      # a single-user instance does not need two more containers for that.
+      - USE_CELERY=False
+      - SYNC_EXERCISES_CELERY=False
+      - SYNC_EXERCISE_IMAGES_CELERY=False
+      - SYNC_EXERCISE_VIDEOS_CELERY=False
+      - SYNC_INGREDIENTS_CELERY=False
+    volumes:
+      - static:/home/wger/static
+      - media:/home/wger/media
+    expose:
+      - 8000
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # Django migrations on a cold database take minutes, not seconds.
+      start_period: 300s
+
+  nginx:
+    image: nginx:1.30.4
+    container_name: wger-nginx
+    restart: unless-stopped
+    depends_on:
+      - web
+    volumes:
+      # The legacy config/ directory contained only prod.env -- this
+      # nginx.conf was mounted but did not exist, so the service could not
+      # have started.
+      # Stays a single-file mount: the source is renamed on the way in
+      # (nginx.conf -> default.conf), and /etc/nginx/conf.d is nginx's own
+      # drop-in directory. docs/lessons-learned.md 18 applies -- recreate this
+      # container after changing the file, do not reload.
+      - ./config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static:/wger/static:ro
+      - media:/wger/media:ro
+    ports:
+      # 8093, not 80: the legacy file bound port 80, which collides with
+      # Caddy on the server.
+      - "${PORT:-8093}:80"
+    labels:
+      homepage.group: Home
+      homepage.name: wger
+      homepage.description: Workout log and training plans
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-8093}
+      homepage.icon: wger
+    healthcheck:
+      test: ["CMD-SHELL", "service nginx status || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  # Training history: the whole reason to run this.
+  pg-data:
+  # Uploaded exercise images.
+  media:
+  static:
+    labels:
+      # Collected from the image at startup. Regenerated every boot.
+      homelab.backup: exclude
+  redis-data:
+    labels:
+      homelab.backup: exclude

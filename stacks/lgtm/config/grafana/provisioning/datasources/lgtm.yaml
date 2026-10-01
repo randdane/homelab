@@ -1,0 +1,69 @@
+apiVersion: 1
+
+# Provisioned at startup so the stack survives `docker compose down -v`.
+# Never configure a datasource through the UI -- it will not come back.
+
+datasources:
+  - name: Mimir
+    uid: mimir
+    type: prometheus
+    access: proxy
+    url: http://mimir:8080/prometheus
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      # The log -> trace half of the correlation. Loki's OTLP ingest stores
+      # trace_id as structured metadata; the regex entry is the fallback for
+      # plain log lines that print it in the message.
+      derivedFields:
+        # $$ is required: Grafana's provisioner interpolates $VAR as an env var,
+        # so a single $ silently blanks the URL and the link does nothing.
+        - name: TraceID
+          matcherType: label
+          matcherRegex: trace_id
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+        - name: TraceID
+          matcherRegex: "trace_id=([0-9a-f]{32})"
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      # The trace -> log half. Click a span, land on that request's logs.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+        filterByTraceID: true
+        tags:
+          - key: service.name
+            value: service_name
+      tracesToMetrics:
+        datasourceUid: mimir
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+        tags:
+          - key: service.name
+            value: service
+      # Backed by the metrics-generator output sitting in Mimir.
+      serviceMap:
+        datasourceUid: mimir
+      nodeGraph:
+        enabled: true
+      # streamingEnabled is deliberately off: it needs Tempo's gRPC port (9095),
+      # which Grafana's HTTP proxy cannot reach. Search works fine over HTTP.

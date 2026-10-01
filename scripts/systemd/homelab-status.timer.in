@@ -1,0 +1,13 @@
+[Unit]
+Description=Capture homelab stack status hourly
+
+[Timer]
+OnCalendar=hourly
+# OnBootSec, not Persistent=: a missed slot fired within a minute of boot and
+# probed guests still starting (2026-09-30, a false page after pve was off
+# overnight). A boot run 15 min in covers the lost slot without that race.
+OnBootSec=15min
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

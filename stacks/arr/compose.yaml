@@ -1,0 +1,211 @@
+name: arr
+
+# Consolidated from the legacy stack_arr/. The seven separate legacy
+# directories (Radarr, Sonarr, Bazarr, Jackett, autobrr, Overseerr,
+# Transmission) picked competing tools for the same jobs and are dropped:
+# Prowlarr supersedes Jackett, qBittorrent-behind-VPN supersedes a bare
+# Transmission, and Jellyseerr is the Jellyfin-native fork of Overseerr.
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: replaceable
+  purpose: Finds, downloads, and files media so Jellyfin has something to play
+  prerequisites: VPN credentials in .env -- qBittorrent and Prowlarr do not start without them
+  description: Gluetun-routed downloader plus Prowlarr, Radarr, Sonarr, Lidarr, Bazarr, Jellyseerr
+
+x-arr-env: &arr-env
+  PUID: ${PUID:-1000}
+  PGID: ${PGID:-1000}
+  TZ: ${TZ:-America/Chicago}
+
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: arr-gluetun
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      # Published here, not on the services themselves: qBittorrent and
+      # Prowlarr have no network stack of their own (see network_mode below).
+      - "${QBITTORRENT_PORT:-8082}:8082"
+      - "${PROWLARR_PORT:-9696}:9696"
+      - "${TORRENT_PORT:-6881}:6881"
+      - "${TORRENT_PORT:-6881}:6881/udp"
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:?set VPN_SERVICE_PROVIDER in .env}
+      - VPN_TYPE=${VPN_TYPE:-wireguard}
+      # Variable names differ per provider and VPN type -- see
+      # https://github.com/qdm12/gluetun-wiki. Both forms are passed through
+      # so either a WireGuard key or OpenVPN credentials work.
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY:-}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES:-}
+      - OPENVPN_USER=${OPENVPN_USER:-}
+      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD:-}
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES:-}
+    volumes:
+      - gluetun-config:/gluetun
+
+  qbittorrent:
+    image: linuxserver/qbittorrent:5.2.3
+    container_name: arr-qbittorrent
+    restart: unless-stopped
+    # No network of its own: every packet goes through Gluetun, and if the
+    # tunnel drops the traffic stops rather than leaking. This is the whole
+    # reason Gluetun is here -- do not "simplify" it to the default network.
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      <<: *arr-env
+      WEBUI_PORT: 8082
+    volumes:
+      - qbittorrent-config:/config
+      - downloads:/downloads
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+
+  prowlarr:
+    image: linuxserver/prowlarr:2.5.2
+    container_name: arr-prowlarr
+    restart: unless-stopped
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      <<: *arr-env
+    volumes:
+      - prowlarr-config:/config
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+
+  radarr:
+    image: linuxserver/radarr:6.3.0
+    container_name: arr-radarr
+    restart: unless-stopped
+    environment:
+      <<: *arr-env
+    ports:
+      - "${RADARR_PORT:-7878}:7878"
+    volumes:
+      - radarr-config:/config
+      - movies:/movies
+      - downloads:/downloads
+    labels:
+      homepage.group: Media
+      homepage.name: Radarr
+      homepage.description: Movie acquisition
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${RADARR_PORT:-7878}
+      homepage.icon: radarr
+      docker-volume-backup.stop-during-backup: "true"
+
+  sonarr:
+    image: linuxserver/sonarr:4.0.19
+    container_name: arr-sonarr
+    restart: unless-stopped
+    environment:
+      <<: *arr-env
+    ports:
+      - "${SONARR_PORT:-8989}:8989"
+    volumes:
+      - sonarr-config:/config
+      - tv:/tv
+      - downloads:/downloads
+    labels:
+      homepage.group: Media
+      homepage.name: Sonarr
+      homepage.description: TV acquisition
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${SONARR_PORT:-8989}
+      homepage.icon: sonarr
+      docker-volume-backup.stop-during-backup: "true"
+
+  lidarr:
+    image: linuxserver/lidarr:3.1.0
+    container_name: arr-lidarr
+    restart: unless-stopped
+    environment:
+      <<: *arr-env
+    ports:
+      - "${LIDARR_PORT:-8686}:8686"
+    volumes:
+      - lidarr-config:/config
+      - music:/music
+      - downloads:/downloads
+    labels:
+      homepage.group: Media
+      homepage.name: Lidarr
+      homepage.description: Music acquisition, feeding Navidrome
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${LIDARR_PORT:-8686}
+      homepage.icon: lidarr
+      docker-volume-backup.stop-during-backup: "true"
+
+  bazarr:
+    image: linuxserver/bazarr:1.6.0
+    container_name: arr-bazarr
+    restart: unless-stopped
+    environment:
+      <<: *arr-env
+    ports:
+      - "${BAZARR_PORT:-6767}:6767"
+    volumes:
+      - bazarr-config:/config
+      - movies:/movies
+      - tv:/tv
+    labels:
+      homepage.group: Media
+      homepage.name: Bazarr
+      homepage.description: Subtitles for whatever Radarr and Sonarr fetch
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${BAZARR_PORT:-6767}
+      homepage.icon: bazarr
+      docker-volume-backup.stop-during-backup: "true"
+
+  jellyseerr:
+    image: fallenbagel/jellyseerr:2.7.3
+    container_name: arr-jellyseerr
+    restart: unless-stopped
+    environment:
+      <<: *arr-env
+      LOG_LEVEL: info
+    ports:
+      - "${JELLYSEERR_PORT:-5055}:5055"
+    volumes:
+      - jellyseerr-config:/app/config
+    labels:
+      homepage.group: Media
+      homepage.name: Jellyseerr
+      homepage.description: Request a film or show, and it appears in Jellyfin
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${JELLYSEERR_PORT:-5055}
+      homepage.icon: jellyseerr
+      docker-volume-backup.stop-during-backup: "true"
+
+volumes:
+  # Configs hold indexer definitions, API keys, quality profiles, and the
+  # request history -- small, and genuinely annoying to rebuild by hand.
+  gluetun-config:
+  qbittorrent-config:
+  prowlarr-config:
+  radarr-config:
+  sonarr-config:
+  lidarr-config:
+  bazarr-config:
+  jellyseerr-config:
+  # Media and downloads. On the server these become bind mounts to real
+  # storage; either way they are far too large for a nightly tarball, and
+  # re-acquirable by definition.
+  downloads:
+    labels:
+      homelab.backup: exclude
+  movies:
+    labels:
+      homelab.backup: exclude
+  tv:
+    labels:
+      homelab.backup: exclude
+  music:
+    labels:
+      homelab.backup: exclude

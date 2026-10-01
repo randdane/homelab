@@ -1,0 +1,34 @@
+# GitHub Actions only, deliberately.
+#
+# The `# v4` comments beside the pinned SHAs in workflows/check.yml are what
+# Dependabot reads, so pinning stops meaning "frozen": a new release arrives
+# as a reviewable PR that swaps the SHA and the comment together. Without this
+# file the pins age silently, which is the one real cost of pinning.
+#
+# Not the `docker` ecosystem. Container images here are already watched by Cup
+# and reported by scripts/check_updates.py, which alerts only on the stacks
+# whose `x-homelab` patch priority is `internet` rather than on all 41. Dependabot could not
+# read most of them anyway -- they are written `image: repo:${VAR:-default}`
+# and it does not interpolate.
+#
+# Not `pip`/`uv` either: no pyproject.toml or requirements.txt exists. The
+# scripts declare their deps inline (PEP 723) and pytest arrives via
+# `uv run --with pytest`, neither of which Dependabot parses.
+#
+# The two xcaddy plugin versions in stacks/caddy/Dockerfile are outside every
+# ecosystem here -- they are `RUN xcaddy build --with` arguments, not a FROM
+# line and not a go.mod, so Dependabot cannot see them. They are not unwatched:
+# check_updates.py reads those pins directly (`plugin_pins`) alongside the
+# Dockerfile's base image. This paragraph said the opposite until 2026-09-06,
+# having been written before that support landed.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]

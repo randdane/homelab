@@ -1,0 +1,25 @@
+# Template. Do NOT symlink this file into systemd — it is not a valid unit
+# until scripts/install-systemd.sh substitutes the @PLACEHOLDERS@.
+[Unit]
+Description=Nightly local archive, then offsite push
+Documentation=file:@REPO@/stacks/backup/README.md
+# Both halves talk to Docker. After a boot this can otherwise start before
+# the daemon is ready; the script also waits for the container itself.
+After=docker.service network-online.target
+Wants=network-online.target
+
+# A failed unit is otherwise silent: systemd marks it failed and
+# nothing tells anyone. %n expands to this unit's own name.
+OnFailure=homelab-failure-notify@%n.service
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+@USERLINES@
+Environment=PATH=@PATH@
+Environment=HOME=@HOME@
+# The local archive stops containers, tars volumes and gzips them, then the
+# offsite job uploads. An hour is generous today (9.6 MB) but the media
+# library means this can grow; the script has its own one-hour cap on the
+# offsite half.
+TimeoutStartSec=2h
+ExecStart=@REPO@/scripts/run_backups.sh

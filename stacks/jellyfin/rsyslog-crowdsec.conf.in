@@ -1,0 +1,15 @@
+# Jellyfin's log lines to CrowdSec on the homelab VM. Installed in CT 102 as
+# /etc/rsyslog.d/60-crowdsec.conf after
+#   sed "s/@HOMELAB_HOST@/<addr>/" rsyslog-crowdsec.conf.in (see README.md).
+#
+# Jellyfin runs outside Docker, so CrowdSec's docker log source cannot see it.
+# CrowdSec listens with a `syslog` source on udp 4242, labelled
+# `type: jellyfin` (stacks/crowdsec/config/acquis.d/docker.yaml); the Proxmox firewall
+# rules ($SITE_DIR/pve/firewall/) admit exactly this flow and nothing else.
+#
+# UDP, deliberately: a CrowdSec restart must never back up or block Jellyfin.
+# A lost line costs one data point to a brute-force counter.
+if $programname == 'jellyfin' then {
+    action(type="omfwd" target="@HOMELAB_HOST@" port="4242" protocol="udp")
+    stop
+}

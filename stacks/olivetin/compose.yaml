@@ -1,0 +1,41 @@
+name: olivetin
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: none
+  purpose: Safe buttons for the handful of shell commands worth running from a phone
+  prerequisites: Actions are defined in config/config.yaml; it does nothing without them
+  description: Every button is an explicitly whitelisted command -- it is not a shell
+
+services:
+  olivetin:
+    image: ghcr.io/olivetin/olivetin:3000.19.0
+    container_name: olivetin
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+    ports:
+      - "${PORT:-1337}:1337"
+    volumes:
+      # OliveTin ships no useful default config -- with none it starts and
+      # presents an empty page. The actions ARE the application.
+      # Stays a single-file mount, checked rather than assumed: the olivetin
+      # image ships /config/entities/ with containers.json, lights.yaml and
+      # servers.yaml, none of which are in this repo (verified 2026-09-03 by
+      # `docker cp` from the image). A directory mount would shadow all three.
+      #
+      # So docs/lessons-learned.md 18 applies here: after editing config.yaml,
+      # `docker compose up -d --force-recreate olivetin`. A reload or restart
+      # will silently use the old file.
+      - ./config/config.yaml:/config/config.yaml:ro
+    labels:
+      homepage.group: Automation
+      homepage.name: OliveTin
+      homepage.description: One-click buttons for common commands
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-1337}
+      homepage.icon: olivetin
+
+# No volumes: OliveTin holds no state. Its configuration is the config file,
+# which lives in git.

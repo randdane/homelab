@@ -1,0 +1,43 @@
+name: flowise
+
+x-homelab:
+  lifecycle: developing
+  host: server
+  exposure: lan
+  data: precious
+  purpose: Building and testing LLM flows without writing the plumbing by hand
+  prerequisites: FLOWISE_PASSWORD in .env; an API key for whichever model provider you use
+  description: The most speculative stack here -- kept deliberately at developing
+
+services:
+  flowise:
+    image: flowiseai/flowise:3.1.2
+    container_name: flowise
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      # The legacy definition had no authentication at all. Flowise stores
+      # model-provider API keys, so an unauthenticated instance is somebody
+      # else's billing problem waiting to happen.
+      - FLOWISE_USERNAME=${FLOWISE_USERNAME:-admin}
+      - FLOWISE_PASSWORD=${FLOWISE_PASSWORD:?set FLOWISE_PASSWORD in .env}
+      - PORT=3000
+      - DATABASE_PATH=/root/.flowise
+      - APIKEY_PATH=/root/.flowise
+      - SECRETKEY_PATH=/root/.flowise
+      - LOG_PATH=/root/.flowise/logs
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - data:/root/.flowise
+    labels:
+      homepage.group: Automation
+      homepage.name: Flowise
+      homepage.description: Visual builder for LLM flows
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-3000}
+      homepage.icon: flowise
+      docker-volume-backup.stop-during-backup: "true"
+
+volumes:
+  # Flows, and the encrypted store holding provider API keys.
+  data:

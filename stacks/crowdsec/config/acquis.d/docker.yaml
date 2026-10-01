@@ -1,0 +1,41 @@
+# Where CrowdSec reads from. Both sources are Docker container log streams,
+# so neither Caddy nor Jellyfin needs to be reconfigured to write log files,
+# and there is no second copy of the logs on disk to rotate.
+#
+# The `type` label selects the parser. It must match what the collection
+# expects, or lines are read and silently discarded -- CrowdSec will look
+# perfectly healthy while parsing nothing. Verify with:
+#   docker exec crowdsec cscli metrics show acquisition
+#
+# That command lies for the first minute or so after a restart. `cscli
+# metrics` reads from CrowdSec's own Prometheus endpoint on :6060, and while
+# that is still coming up cscli prints
+#
+#   level=warning msg="fetching metrics: ... :6060: connect: connection refused"
+#
+# followed by an EMPTY table -- which is indistinguishable from acquisition
+# being dead. Measured 2026-09-03, one minute after a recreate; the same
+# command a few minutes later showed docker:caddy reading normally. Check
+# `docker logs crowdsec | grep "connected to container logs"` instead if you
+# need an answer immediately.
+#
+# `docker_host` points at this stack's socket proxy rather than the raw
+# socket. `:ro` on the socket would not have stopped this container creating
+# a privileged one -- see docs/lessons-learned.md §27. It must be repeated
+# per source; there is no global setting.
+---
+source: docker
+docker_host: tcp://socket-proxy:2375
+container_name:
+  - caddy
+labels:
+  type: caddy
+---
+# Jellyfin is not a container here: it runs in an LXC, whose
+# rsyslog forwards the `jellyfin` program's lines to this port (see
+# stacks/jellyfin/README.md). Same `type`, so the same parser and scenarios.
+source: syslog
+listen_addr: 0.0.0.0
+listen_port: 4242
+labels:
+  type: jellyfin

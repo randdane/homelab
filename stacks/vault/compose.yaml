@@ -1,0 +1,58 @@
+name: vault
+
+# DEV MODE. Read the README before trusting this with anything.
+#
+# `server -dev` keeps the entire encrypted store IN MEMORY. Every secret is
+# gone on restart, the vault auto-unseals, and the root token is whatever
+# this file says it is. That is the right shape for learning and completely
+# wrong for storage -- which is why `purpose` says learning and nothing else
+# in this repo depends on it.
+
+x-homelab:
+  lifecycle: developing
+  host: laptop
+  # `lan`: port 8201 is published on every interface. This stack is for
+  # learning and stores nothing that matters, which is a reason not to worry
+  # about it and not a reason to record it as unreachable.
+  exposure: lan
+  data: none
+  purpose: Learning how Vault works -- not storing anything that matters
+  prerequisites: none
+  description: Dev mode; state is in memory and does not survive a restart
+
+services:
+  vault:
+    image: hashicorp/vault:2.0.4
+    container_name: vault
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      # The legacy definition hardcoded "myroot". Still a dev token, but at
+      # least not one that is in a public git repo somewhere.
+      - VAULT_DEV_ROOT_TOKEN_ID=${VAULT_DEV_ROOT_TOKEN_ID:?set VAULT_DEV_ROOT_TOKEN_ID in .env}
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+      - VAULT_ADDR=http://localhost:8200
+    ports:
+      # 8201, not the usual 8200 -- Duplicati already has that in this repo.
+      - "${PORT:-8201}:8200"
+    cap_add:
+      # Lets Vault lock memory so secrets are not swapped to disk. Largely
+      # symbolic in dev mode, where they never leave memory anyway.
+      - IPC_LOCK
+    command: server -dev
+    labels:
+      homepage.group: Security
+      homepage.name: Vault
+      homepage.description: Secrets management (dev mode, learning only)
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-8201}
+      homepage.icon: vault
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+# No volumes. The legacy definition mounted vault-data:/vault/file, which
+# dev mode never writes to -- an empty volume implying a persistence that
+# does not exist. Removed rather than left as a false comfort.

@@ -1,0 +1,31 @@
+[Unit]
+Description=Monthly offsite backup verification
+
+[Timer]
+# Monthly, per docs/recovery.md: "Run this monthly; it is the whole DR check."
+# It was documented as a habit and therefore never ran. status.py already
+# watches the archive's AGE hourly, which catches backups that stopped; this
+# catches backups that keep running and produce unreadable output.
+# OnCalendar= ACCUMULATES. A second line adds a schedule, it does not replace
+# the first, and only an empty assignment resets the list. This unit shipped
+# with `OnCalendar=monthly` above the line below, which normalises to
+# `*-*-01 00:00:00`, so it was scheduled twice on the 1st. Seen on 2026-09-01:
+# the 00:00 slot ran (00:17 after the randomised delay) and `systemctl show`
+# still listed a second entry for 14:00 the same day. The empty assignment
+# below is what makes the next line authoritative.
+OnCalendar=
+# Well clear of the 03:00 nightly window -- a verify during the backup would
+# fight it for the same Duplicati instance.
+#
+# That is not a theoretical collision. The first server is powered off most nights and
+# wakes at 04:00, so with Persistent=true a missed 00:00 slot fires as a
+# catch-up seconds after boot -- alongside the backup's own 03:00 catch-up,
+# both driving the same Duplicati server. 14:00 cannot collide that way
+# because the machine is already up by then.
+OnCalendar=*-*-01 14:00:00
+RandomizedDelaySec=30m
+# The first server was powered off overnight often enough that a missed month is likely.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

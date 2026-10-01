@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly Obsidian vault commit and push
+
+[Timer]
+# Sunday midday. The laptop is often off or asleep, so Persistent= runs a
+# missed week at the next boot or login instead of skipping it.
+OnCalendar=Sun 12:00
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,34 @@
+# Template. Do NOT symlink this file into systemd — it is not a valid unit
+# until scripts/install-systemd.sh substitutes the @PLACEHOLDERS@.
+#
+# The repo lives at ~/Projects/_personal/homelab on the dev laptop and at
+# /opt/homelab on the server, and WorkingDirectory= does not expand
+# environment variables (only specifiers like %h), so there is no single
+# literal that works in both places. The installer resolves it instead.
+[Unit]
+Description=Capture homelab stack status
+
+# A failed unit is otherwise silent: systemd marks it failed and
+# nothing tells anyone. %n expands to this unit's own name.
+OnFailure=homelab-failure-notify@%n.service
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+@USERLINES@
+# systemd services do not source .bashrc, so uv (typically installed to
+# ~/.local/bin) is not on PATH unless listed explicitly here.
+Environment=PATH=@PATH@
+# status.py resolves the state file from HOME. A system unit does not
+# inherit a login environment, so HOME is pinned rather than assumed.
+Environment=HOME=@HOME@
+# HOMELAB_HOST is not set here on purpose: status.py falls back to the system
+# hostname, and setting it only in ~/.bashrc (which this unit never sources)
+# would silently split one host's history across two state files. See
+# README.md "Status tracking" for where to set it so both paths agree.
+@ALERTLINE@
+# status.py runs `docker ps`/`docker inspect` per stack with no timeout of
+# their own, so a wedged dockerd would hang this oneshot forever: never
+# failing, so OnFailure never fires, and every later hourly run skipped. The
+# longest real run over 8 days was 128 s, including the 60 s post-boot retry.
+TimeoutStartSec=300
+ExecStart=@UV@ run scripts/status.py --capture

@@ -1,0 +1,98 @@
+receivers:
+  # Ingest for hand-instrumented apps (see demo/app.py).
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  hostmetrics:
+    collection_interval: 30s
+    root_path: /hostfs
+    scrapers:
+      cpu:
+      load:
+      memory:
+      disk:
+      network:
+      filesystem:
+        exclude_mount_points:
+          match_type: regexp
+          mount_points: ["/hostfs/(var/lib/docker|snap|proc|sys)/.*"]
+        exclude_fs_types:
+          match_type: strict
+          fs_types: [tmpfs, devtmpfs, overlay, squashfs, autofs, binfmt_misc]
+
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    collection_interval: 30s
+
+  filelog:
+    include: ["/var/lib/docker/containers/*/*-json.log"]
+    include_file_path: true
+    # Skip our own logs, or the collector re-ingests what it just wrote.
+    exclude: ["/var/lib/docker/containers/*/*lgtm-otel-collector*.log"]
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.time
+          layout: "%Y-%m-%dT%H:%M:%S.%LZ"
+      - type: regex_parser
+        parse_from: attributes["log.file.path"]
+        regex: '^/var/lib/docker/containers/(?P<container_id>[0-9a-f]{12})'
+      - type: move
+        from: attributes.log
+        to: body
+
+processors:
+  # MUST be first in every pipeline. A collector OOM loses exactly the data
+  # needed to explain the burst that killed it.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 15
+
+  # Gives every signal a consistent host.name / container identity. This shared
+  # labeling is what makes the Grafana correlation links work.
+  resourcedetection:
+    detectors: [env, system, docker]
+    system:
+      hostname_sources: [os]
+
+  batch:
+    timeout: 5s
+
+exporters:
+  # Loki's native OTLP endpoint. Note the /otlp root: the exporter appends
+  # /v1/logs itself. Requires allow_structured_metadata in config/loki/config.yaml.
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  prometheusremotewrite:
+    endpoint: http://mimir:8080/api/v1/push
+    resource_to_telemetry_conversion:
+      enabled: true
+
+service:
+  telemetry:
+    logs:
+      level: warn
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp, hostmetrics, docker_stats]
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [prometheusremotewrite]
+    logs:
+      receivers: [otlp, filelog]
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [otlphttp/loki]

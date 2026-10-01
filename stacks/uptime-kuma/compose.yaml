@@ -1,0 +1,72 @@
+name: uptime-kuma
+
+# Watches the services from the outside-in and says something when one stops
+# answering. Nothing else here does: `docker ps` reports a container is up,
+# which is not the same as an application that still serves requests, and
+# `restart: unless-stopped` hides a container that crashes and comes back all
+# night.
+
+x-homelab:
+  lifecycle: production
+  host: always-on
+  exposure: lan
+  data: precious
+  purpose: Notices a service is down and tells you, rather than waiting for family to
+  prerequisites: an ntfy notification using the homelab token, configured in the UI after first start
+  description: HTTP and TCP probes, SQLite, notifications out through ntfy
+
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:2.5.3
+    container_name: uptime-kuma
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+    ports:
+      # 3001 is Homepage's; see docs/ports.md.
+      - "${PORT:-3004}:3001"
+    volumes:
+      - data:/app/data
+    labels:
+      homepage.group: Ops
+      homepage.name: Uptime Kuma
+      homepage.description: What is down, and for how long
+      # An absolute vhost URL, not ${HOMELAB_HOST}:<port>. The name is served
+      # by Caddy's wildcard, so this works over TLS from the tailnet and the
+      # LAN alike, and it does not go stale if the published port moves.
+      # ${PUBLIC_DOMAIN} must be set in THIS stack's .env -- Compose
+      # interpolates labels from the stack's own file and never from the
+      # repo-wide one, which is also why the domain is not written here.
+      #
+      # `:?` and not a bare ${PUBLIC_DOMAIN}: unset, the label rendered as the
+      # valid-looking `https://kuma.` and the tile pointed at nothing.
+      # Failing to render is the loud version of that, and it fails on the
+      # host doing the deploy rather than in a browser days later.
+      homepage.href: https://kuma.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in this stack's .env -- see .env.example}
+      homepage.icon: uptime-kuma
+      # SQLite. A mid-write copy of the history database restores as corrupt.
+      docker-volume-backup.stop-during-backup: "true"
+    # Joins `edge` so it can probe the proxied stacks by container name, which
+    # tests the application rather than the path through Caddy. The public
+    # path is worth a separate check -- see the README.
+    networks:
+      - default
+      - edge
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3001 >/dev/null || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      # 180s, not 60s. Measured on the first server: 33s to first healthy from a warm
+      # daemon restart, but 90s from a cold boot -- past the old 60s window,
+      # so the hourly status check paged about a service that was still
+      # loading modules. See the note in stacks/life-queue/compose.yaml: a
+      # long start_period costs nothing when startup is fast.
+      start_period: 180s
+
+volumes:
+  data:
+
+networks:
+  edge:
+    external: true

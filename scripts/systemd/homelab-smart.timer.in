@@ -1,0 +1,15 @@
+[Unit]
+Description=Monthly SMART heartbeat
+
+[Timer]
+# Monthly. smartd already speaks up the moment something is wrong; this exists
+# so that silence stays meaningful -- an alerter that has died is silent in
+# exactly the same way as a healthy disk.
+OnCalendar=*-*-01 09:00:00
+RandomizedDelaySec=1h
+# The first server was powered off often enough that a missed month is likely, and a
+# heartbeat that skips months teaches you to ignore it.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

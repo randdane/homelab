@@ -1,0 +1,14 @@
+# Proxmox firewall for the Docker VM (VM 101). Copy to /etc/pve/firewall/ on
+# the Proxmox host. Docker's published ports bypass the guest's own INPUT
+# chain, so the hypervisor is where these two are restricted: LDAP (3389) and
+# CrowdSec's syslog intake (4242/udp), for the Jellyfin LXC only.
+[OPTIONS]
+enable: 1
+policy_in: ACCEPT
+policy_out: ACCEPT
+
+[RULES]
+IN ACCEPT -source 10.0.0.12 -p tcp -dport 3389
+IN DROP -p tcp -dport 3389
+IN ACCEPT -source 10.0.0.12 -p udp -dport 4242
+IN DROP -p udp -dport 4242

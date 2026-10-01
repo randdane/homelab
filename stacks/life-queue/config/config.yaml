@@ -1,0 +1,74 @@
+# Vikunja configuration — non-secret settings only.
+# Secrets come from the environment (see .env.example). Env overrides this file.
+#
+# Key names verified against the 2.5.0 config schema, not recalled:
+#   https://raw.githubusercontent.com/go-vikunja/vikunja/v2.5.0/config-raw.json
+# Vikunja silently ignores unknown keys, so a misremembered key looks
+# configured and does nothing.
+
+service:
+  # Where the browser reaches Vikunja. v1 is local-only.
+  publicurl: http://localhost:3456/
+  # Defaults to GMT. Left unset, every reminder fires on GMT while you live in
+  # Central — a six-hour error that looks like "reminders are broken".
+  timezone: America/Chicago
+  # v1 is single-user on localhost. Turn this off once your account exists;
+  # nothing should be able to self-register even on a laptop-only instance.
+  enableregistration: false
+  # NOTE: service.JWTSecret is deprecated in 2.x — service.secret replaces it,
+  # and it is supplied via VIKUNJA_SERVICE_SECRET.
+
+database:
+  type: sqlite
+  # Deliberate: SQLite, not Postgres. Personal single-writer use. See spec §4 —
+  # this is a one-way door taken on purpose.
+  path: /db/vikunja.db
+
+files:
+  # Kept inside the same volume as the database so one archive covers both.
+  basepath: /db/files
+
+webhooks:
+  enabled: true
+  timeoutseconds: 30
+
+outgoingrequests:
+  # REQUIRED for this stack to work at all.
+  #
+  # Vikunja blocks outgoing requests to non-globally-routable IPs by default
+  # as SSRF protection. The reminder webhook targets http://n8n:5678/, which
+  # resolves to a private Docker bridge address — so with the default `false`
+  # every webhook is refused before it is sent, and the failure is quiet.
+  # This is the single setting most likely to make §6 mysteriously not work.
+  allownonroutableips: true
+
+log:
+  level: INFO
+
+defaultsettings:
+  timezone: America/Chicago
+  week_start: 1
+  # Email is not configured in v1 and there is no SMTP server, so these would
+  # only generate errors. Reminders reach you via the webhook -> n8n -> Home
+  # Assistant path instead.
+  email_reminders_enabled: false
+  overdue_tasks_reminders_enabled: false
+
+auth:
+  # Password login stays: it is the way in when Authentik is down.
+  local:
+    enabled: true
+  # SSO through Authentik, application `vikunja`, group vikunja-users.
+  # Client ID and secret come from env (VIKUNJA_AUTH_OPENID_PROVIDERS_
+  # AUTHENTIK_*), which only works because this key exists here. Redirect
+  # URI registered in Authentik: <publicurl>auth/openid/authentik.
+  # The backend reaches Authentik via @authentik_oidc_internal (Caddy).
+  openid:
+    enabled: true
+    providers:
+      authentik:
+        name: Authentik
+        # authurl is set from env: it carries PUBLIC_DOMAIN.
+        # Attach the login to the existing account with the same email;
+        # safe only because every Authentik account is admin-made.
+        emailfallback: true

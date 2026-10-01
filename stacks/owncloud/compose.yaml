@@ -1,0 +1,101 @@
+name: owncloud
+
+# The legacy definition was a single owncloud/server container with no
+# database and no Redis. ownCloud cannot run that way -- it needs both.
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: precious
+  purpose: File sync across devices -- documents that exist nowhere else
+  prerequisites: OWNCLOUD_DB_PASSWORD, MYSQL_ROOT_PASSWORD and admin credentials in .env
+  description: ownCloud with MariaDB and Redis
+
+services:
+  owncloud:
+    image: owncloud/server:10.16.4
+    container_name: owncloud
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      # ownCloud rejects requests whose Host header is not trusted, so this
+      # must match however you actually reach it -- localhost on the laptop,
+      # the real hostname behind Caddy.
+      - OWNCLOUD_DOMAIN=${OWNCLOUD_DOMAIN:-localhost:8095}
+      - OWNCLOUD_TRUSTED_DOMAINS=${OWNCLOUD_TRUSTED_DOMAINS:-localhost}
+      - OWNCLOUD_DB_TYPE=mysql
+      - OWNCLOUD_DB_NAME=owncloud
+      - OWNCLOUD_DB_USERNAME=owncloud
+      - OWNCLOUD_DB_PASSWORD=${OWNCLOUD_DB_PASSWORD:?set OWNCLOUD_DB_PASSWORD in .env}
+      - OWNCLOUD_DB_HOST=mariadb
+      - OWNCLOUD_ADMIN_USERNAME=${OWNCLOUD_ADMIN_USERNAME:-admin}
+      - OWNCLOUD_ADMIN_PASSWORD=${OWNCLOUD_ADMIN_PASSWORD:?set OWNCLOUD_ADMIN_PASSWORD in .env}
+      - OWNCLOUD_MYSQL_UTF8MB4=true
+      - OWNCLOUD_REDIS_ENABLED=true
+      - OWNCLOUD_REDIS_HOST=redis
+    ports:
+      - "${PORT:-8095}:8080"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - files:/mnt/data
+    labels:
+      homepage.group: Files
+      homepage.name: ownCloud
+      homepage.description: File sync and share
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-8095}
+      homepage.icon: owncloud
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD", "/usr/bin/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  mariadb:
+    image: mariadb:10.11
+    container_name: owncloud-mariadb
+    restart: unless-stopped
+    command: ["--max-allowed-packet=128M", "--innodb-log-file-size=64M"]
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      - MYSQL_USER=owncloud
+      - MYSQL_PASSWORD=${OWNCLOUD_DB_PASSWORD:?set OWNCLOUD_DB_PASSWORD in .env}
+      - MYSQL_DATABASE=owncloud
+    volumes:
+      - mysql:/var/lib/mysql
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  redis:
+    image: redis:7-alpine
+    container_name: owncloud-redis
+    restart: unless-stopped
+    command: ["--databases", "1"]
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  files:
+  mysql:
+  redis:
+    labels:
+      # Cache and file locks only; ownCloud rebuilds both.
+      homelab.backup: exclude

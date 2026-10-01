@@ -1,0 +1,6 @@
+# Not `socket:`. Homepage reaches the Docker API through this stack's
+# socket proxy, which refuses every write method -- `:ro` on the socket
+# itself would not have. See docs/lessons-learned.md §27.
+my-docker:
+  host: socket-proxy
+  port: 2375

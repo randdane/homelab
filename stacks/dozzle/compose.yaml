@@ -1,0 +1,85 @@
+name: dozzle
+
+x-homelab:
+  lifecycle: production
+  host: both
+  exposure: lan
+  data: none
+  purpose: Tail a container's logs right now, without writing a LogQL query
+  prerequisites: none
+  description: Watches the present; nothing here stores log history
+
+services:
+  dozzle:
+    image: amir20/dozzle:v10.7.4
+    container_name: dozzle
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      # Dozzle honours DOCKER_HOST, so no argv change is needed.
+      - DOCKER_HOST=tcp://socket-proxy:2375
+    ports:
+      # Loopback only. On 0.0.0.0 this was reachable from the whole LAN and
+      # from every container on the host -- a compromised Jellyfin could read
+      # every log here. Binding to the LAN address would not have helped: a
+      # container reaches the host's LAN address too. The daily route is
+      # https://dozzle.<PUBLIC_DOMAIN> through Caddy's remote_ip gate; this port
+      # is the break-glass path:  ssh -fN -L 8090:127.0.0.1:8090 homelab
+      - "127.0.0.1:${PORT:-8090}:8080"
+    labels:
+      homepage.group: Ops
+      homepage.name: Dozzle
+      homepage.description: Live container logs
+      homepage.href: https://dozzle.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in this stack's .env -- see .env.example}
+      homepage.icon: dozzle
+    healthcheck:
+      test: ["CMD", "/dozzle", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on: [socket-proxy]
+    # `admin`, not `edge`: Caddy must reach this, and nothing else should.
+    # Every public-facing container is on `edge`, so joining it would hand
+    # them the logs directly. See docs/host-setup.md 12.
+    networks:
+      - default
+      - admin
+
+  socket-proxy:
+    # `:ro` on the docker socket restricts the FILE, not the Docker API --
+    # a container holding it can still create a privileged container that
+    # bind-mounts /, which is host root. This proxy is what actually
+    # restricts it. See docs/lessons-learned.md §27.
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    container_name: dozzle-socket-proxy
+    restart: unless-stopped
+    environment:
+      # The setting that makes this read-only.
+      - POST=0
+      # Measured 2026-09-03: container list, inspect, logs, events, info, version.
+      - CONTAINERS=1
+      - EVENTS=1
+      - INFO=1
+      - VERSION=1
+      # Explicitly denied. Each of these grants host takeover on its own,
+      # and some have GET forms that POST=0 would not stop.
+      - EXEC=0
+      - SECRETS=0
+      - CONFIGS=0
+      - SWARM=0
+      - NODES=0
+      - PLUGINS=0
+      - SYSTEM=0
+      - AUTH=0
+      - BUILD=0
+      - COMMIT=0
+      - DISTRIBUTION=0
+      - SESSION=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # No ports: reachable only from inside this stack's network.
+
+networks:
+  admin:
+    external: true

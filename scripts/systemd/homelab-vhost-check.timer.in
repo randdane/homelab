@@ -1,0 +1,15 @@
+[Unit]
+Description=Check the gated vhosts daily
+
+[Timer]
+# 06:00 rather than `daily`, to stay clear of the 03:00 backup and
+# homelab-derp-check's one-hour spread against a midnight slot.
+OnCalendar=06:00
+# OnBootSec, not Persistent=: a missed slot fired within a minute of boot and
+# probed guests still starting (2026-09-30, a false page after pve was off
+# overnight). A boot run 15 min in covers the lost slot without that race.
+OnBootSec=15min
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target

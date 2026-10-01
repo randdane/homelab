@@ -1,0 +1,51 @@
+# Template. Do NOT symlink this file into systemd -- it is not a valid unit
+# until scripts/install-systemd.sh substitutes the @PLACEHOLDERS@.
+#
+# Re-converge every running stack to its compose file, once per boot.
+#
+# The defect this exists for is not a stack that is DOWN -- restart policies
+# already cover that -- but a container that came back UP and wired wrong.
+# On 2026-09-23 dockerd logged two `error locating sandbox ... not found`
+# warnings during container restore and brought crowdsec and authentik-ldap
+# back holding one of the two networks their compose file declares. crowdsec
+# crash-looped 58 times; authentik-ldap ran for half an hour in a forbidden
+# state with every health check green. See scripts/reconcile-stacks.sh.
+#
+# A SERVICE, NOT A TIMER, and that is the whole design. The defect is created
+# by dockerd restoring containers, so boot is the only moment it can appear.
+# A periodic run would instead recreate containers whenever the repo was
+# edited mid-day, which is a deploy on a schedule -- exactly the unattended
+# behaviour this repo avoids everywhere else.
+[Unit]
+Description=Re-converge running Docker stacks to their compose files
+
+# After docker, but the script does NOT trust that: `After=docker.service`
+# is satisfied when the socket answers, while the daemon goes on restoring
+# containers for some seconds after. The script polls for a usable daemon
+# before touching anything, for the same reason tailnet-source-rule.sh does.
+After=docker.service
+Requires=docker.service
+
+# A failed unit is otherwise silent: systemd marks it failed and nothing
+# tells anyone. %n expands to this unit's own name.
+OnFailure=homelab-failure-notify@%n.service
+[Service]
+Type=oneshot
+# Deliberately NOT RemainAfterExit=yes. This must be re-runnable by hand
+# after any dockerd restart, and `systemctl start` on an already-active
+# oneshot is a silent no-op -- the trap that made the first version of
+# homelab-tailnet-source-check.service useless. Measured; see $SITE_DIR/docs/devices.md.
+WorkingDirectory=@REPO@
+@USERLINES@
+Environment=PATH=@PATH@
+Environment=HOME=@HOME@
+# Compose may pull or build an image if one went missing, and does so
+# serially across 14 stacks. The measured no-op sweep is ~3 s; this is sized
+# for the bad day, not the good one. Without a bound a wedged dockerd would
+# hang the oneshot forever, so it would never fail and OnFailure would never
+# fire -- a silent watchdog is worse than none.
+TimeoutStartSec=900
+ExecStart=@REPO@/scripts/reconcile-stacks.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,101 @@
+name: invidious
+
+x-homelab:
+  lifecycle: developing
+  host: server
+  exposure: lan
+  data: replaceable
+  purpose: Watch YouTube without the ads, the tracking, or an account
+  prerequisites: INVIDIOUS_HMAC_KEY and POSTGRES_PASSWORD in .env; expect breakage, see README
+  description: Kept at developing on purpose -- YouTube actively breaks this
+
+services:
+  invidious:
+    image: quay.io/invidious/invidious:2.20260804.1
+    container_name: invidious
+    restart: unless-stopped
+    environment:
+      # Secrets stay in the environment, never in the mounted config file.
+      # The legacy config/invidious_config.yml carried a real hmac_key in
+      # git; it was not copied.
+      - INVIDIOUS_DATABASE_URL=postgres://${POSTGRES_USER:-invidious}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@invidious-db:5432/${POSTGRES_DB:-invidious}
+      - INVIDIOUS_HMAC_KEY=${INVIDIOUS_HMAC_KEY:?set INVIDIOUS_HMAC_KEY in .env}
+      - INVIDIOUS_CONFIG_FILE=/config/invidious.yml
+    ports:
+      - "${PORT:-3005}:3000"
+    volumes:
+      # The DIRECTORY, not the file -- see docs/lessons-learned.md 18. A
+      # single-file mount pins an inode and `git pull` replaces by rename, so
+      # config edits never reach the container while a reload reports success.
+      # The invidious image ships nothing at /config (verified 2026-09-03), so
+      # this shadows nothing.
+      - ./config:/config:ro
+    depends_on:
+      invidious-db:
+        condition: service_healthy
+      inv-sig-helper:
+        condition: service_started
+    labels:
+      homepage.group: Media
+      homepage.name: Invidious
+      homepage.description: YouTube without the ads or the account
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-3005}
+      homepage.icon: invidious
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -nv --tries=1 --spider http://127.0.0.1:3000/api/v1/trending || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  inv-sig-helper:
+    # Solves YouTube's signature challenge. Without it many videos simply
+    # will not play, with no obvious error.
+    image: quay.io/invidious/inv-sig-helper:latest
+    container_name: invidious-sig-helper
+    restart: unless-stopped
+    init: true
+    command: ["--tcp", "0.0.0.0:12999"]
+    environment:
+      - RUST_LOG=info
+    # It executes untrusted JavaScript from YouTube by design, so it runs
+    # with nothing: no capabilities, no writable filesystem, no privilege
+    # escalation. Kept verbatim from upstream -- do not relax.
+    cap_drop:
+      - ALL
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "12999"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  invidious-db:
+    image: postgres:17-alpine
+    container_name: invidious-db
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - POSTGRES_DB=${POSTGRES_DB:-invidious}
+      - POSTGRES_USER=${POSTGRES_USER:-invidious}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "${POSTGRES_DB:-invidious}", "-U", "${POSTGRES_USER:-invidious}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  # Local accounts, subscriptions, and cached video metadata. Replaceable:
+  # everything here is either re-fetchable or a preference.
+  postgres-data:

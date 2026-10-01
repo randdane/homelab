@@ -1,0 +1,253 @@
+# Build a Docker VM on pve, from nothing to "ready for the restore".
+# Every task is a step in $SITE_DIR/docs/pve-log.md; the log says why, this says how.
+#
+#   cd ansible     # the inventory is site data, in $SITE_DIR (site.example/)
+#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" homelab-vm.yml --check --diff   # dry run
+#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" homelab-vm.yml
+#
+# NOT done here, on purpose:
+#   - the Fixed IP on the router (UniFi API, see pve-log) -- a new VM boots on DHCP
+#     first, so the play stops after the clone and says so
+#   - the GitHub deploy key registration (needs your gh login)
+#   - .env files, volume restore, starting stacks -- secrets and data,
+#     see docs/recovery.md and scripts/restore_volumes.sh
+
+- name: Template and VMs on the Proxmox host
+  hosts: proxmox
+  vars:
+    tmpl_id: 9000
+    image: debian-13-genericcloud-amd64.qcow2
+    image_url: https://cloud.debian.org/images/cloud/trixie/latest
+  tasks:
+    - name: Cloud image checksums
+      ansible.builtin.uri:
+        url: "{{ image_url }}/SHA512SUMS"
+        return_content: true
+      register: sums
+      check_mode: false
+
+    - name: Debian 13 cloud image, verified
+      ansible.builtin.get_url:
+        url: "{{ image_url }}/{{ image }}"
+        dest: "/root/{{ image }}"
+        checksum: "sha512:{{ sums.content | regex_search('([0-9a-f]{128})\\s+' + image, '\\1') | first }}"
+
+    - name: Does the template exist
+      ansible.builtin.command: qm status {{ tmpl_id }}
+      register: tmpl
+      changed_when: false
+      failed_when: false
+
+    - name: Template {{ tmpl_id }}
+      when: tmpl.rc != 0
+      ansible.builtin.shell: |
+        set -euo pipefail
+        qm create {{ tmpl_id }} --name debian13-tmpl --ostype l26 --cpu host --cores 2 --memory 2048 \
+          --net0 virtio,bridge=vmbr0 --scsihw virtio-scsi-single --agent enabled=1 \
+          --serial0 socket --vga serial0
+        qm set {{ tmpl_id }} --scsi0 local-lvm:0,import-from=/root/{{ image }},discard=on,ssd=1
+        qm set {{ tmpl_id }} --ide2 local-lvm:cloudinit --boot order=scsi0
+        qm template {{ tmpl_id }}
+      args:
+        executable: /bin/bash
+
+    - name: Login key for each VM
+      ansible.builtin.copy:
+        src: "{{ hostvars[item].ansible_ssh_private_key_file }}.pub"
+        dest: "/root/{{ hostvars[item].ansible_ssh_private_key_file | basename }}.pub"
+        mode: "0644"
+      loop: "{{ groups.docker_vms }}"
+
+    - name: Which VMs exist
+      ansible.builtin.command: qm status {{ hostvars[item].vmid }}
+      register: vms
+      changed_when: false
+      failed_when: false
+      loop: "{{ groups.docker_vms }}"
+
+    - name: Clone missing VMs
+      when: item.rc != 0
+      vars:
+        vm: "{{ hostvars[item.item] }}"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        qm clone {{ tmpl_id }} {{ vm.vmid }} --name {{ item.item }} --full
+        qm set {{ vm.vmid }} --cores {{ vm.vm_cores }} --memory {{ vm.vm_memory }} --ciuser {{ vm.ansible_user }} \
+          --sshkeys /root/{{ vm.ansible_ssh_private_key_file | basename }}.pub --ipconfig0 ip=dhcp
+        qm resize {{ vm.vmid }} scsi0 {{ vm.vm_disk }}
+        qm config {{ vm.vmid }} | grep '^net0'
+      args:
+        executable: /bin/bash
+      loop: "{{ vms.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      register: cloned
+
+    - name: New VMs need a Fixed IP before they boot
+      when: cloned.results | selectattr('changed') | list | length > 0
+      ansible.builtin.fail:
+        msg: >-
+          Cloned: {{ cloned.results | selectattr('changed') | map(attribute='stdout') | list }}.
+          Pin each MAC to its inventory address on the router, `qm start <vmid>`, then rerun.
+
+    - name: VMs running
+      ansible.builtin.command: qm start {{ hostvars[item].vmid }}
+      register: started
+      changed_when: started.rc == 0
+      failed_when: false
+      loop: "{{ groups.docker_vms }}"
+
+- name: Docker host inside each VM (host-setup.md 0, 1, 6, 10-12, 14, 7)
+  hosts: docker_vms
+  become: true
+  tasks:
+    - name: Wait for ssh
+      ansible.builtin.wait_for_connection:
+        timeout: 180
+
+    - name: Base packages (guest agent, git, curl)
+      ansible.builtin.apt:
+        name: [qemu-guest-agent, git, curl, ca-certificates, python3-docker]
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Guest agent running
+      ansible.builtin.service:
+        name: qemu-guest-agent
+        state: started
+
+    # host-setup.md 0
+    - name: Docker apt repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        uris: https://download.docker.com/linux/debian
+        suites: "{{ ansible_facts['distribution_release'] }}"
+        components: stable
+        architectures: amd64
+        signed_by: https://download.docker.com/linux/debian/gpg
+
+    - name: The hand-written repo file it replaces (pve-log, step 0)
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/docker.list
+        state: absent
+
+    - name: Docker
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
+        update_cache: true
+
+    - name: "{{ ansible_user }} in the docker group"
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: true
+
+    # host-setup.md 1 -- before any container exists
+    - name: daemon.json
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: "0644"
+        content: |
+          {
+            "default-address-pools": [
+              { "base": "172.17.0.0/12", "size": 24 },
+              { "base": "10.201.0.0/16", "size": 24 }
+            ],
+            "userland-proxy": false,
+            "log-driver": "json-file",
+            "log-opts": { "max-size": "20m", "max-file": "5" },
+            "shutdown-timeout": 30
+          }
+      notify: Restart docker
+
+    # host-setup.md 14
+    - name: Journal cap, as a drop-in rather than an edit of the packaged file
+      ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf.d/homelab.conf
+        mode: "0644"
+        content: |
+          [Journal]
+          SystemMaxUse=500M
+          MaxRetentionSec=3month
+      notify: Restart journald
+
+    # host-setup.md 6
+    - name: environment.d exists
+      become: false
+      ansible.builtin.file:
+        path: ~/.config/environment.d
+        state: directory
+        mode: "0755"
+
+    - name: HOMELAB_HOST for systemd
+      become: false
+      ansible.builtin.copy:
+        dest: ~/.config/environment.d/homelab.conf
+        content: "HOMELAB_HOST={{ homelab_host }}\n"
+        mode: "0644"
+
+    - name: uv
+      become: false
+      ansible.builtin.shell: curl -LsSf https://astral.sh/uv/install.sh | sh
+      args:
+        creates: ~/.local/bin/uv
+
+    - name: Apply handlers before the networks need Docker
+      ansible.builtin.meta: flush_handlers
+
+    # Repo: the deploy key is registered by hand (pve-log, "repo cloned").
+    - name: GitHub deploy key present
+      become: false
+      ansible.builtin.stat:
+        path: ~/.ssh/homelab_github-homelab
+      register: deploy_key
+
+    - name: Stop if the deploy key is missing
+      when: not deploy_key.stat.exists
+      ansible.builtin.fail:
+        msg: Create and register ~/.ssh/homelab_github-homelab first -- see $SITE_DIR/docs/pve-log.md.
+
+    - name: /opt/homelab owned by {{ ansible_user }}
+      ansible.builtin.file:
+        path: /opt/homelab
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+
+    - name: Repo cloned (never updated here -- pulls are yours)
+      become: false
+      ansible.builtin.git:
+        repo: "{{ homelab_repo }}"
+        dest: /opt/homelab
+        update: false
+        accept_hostkey: true
+
+    # host-setup.md 11, 12
+    - name: External Docker networks
+      community.docker.docker_network:
+        name: "{{ item.name }}"
+        ipam_config: "{{ item.ipam | default(omit) }}"
+      loop:
+        - { name: edge, ipam: [{ subnet: 10.201.7.0/24, iprange: 10.201.7.0/25 }] }
+        - { name: admin }
+
+    # host-setup.md 7, disabled until cutover
+    - name: Timer units written
+      ansible.builtin.command: ./scripts/install-systemd.sh --system --no-enable
+      args:
+        chdir: /opt/homelab
+        creates: /etc/systemd/system/homelab-backup.timer
+      environment:
+        SUDO_USER: "{{ ansible_user }}"
+
+  handlers:
+    - name: Restart docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted
+
+    - name: Restart journald
+      ansible.builtin.service:
+        name: systemd-journald
+        state: restarted

@@ -1,0 +1,60 @@
+# Ban source IPs outside the US that reach the public Jellyfin vhost.
+#
+# Everyone who uses this Jellyfin is domestic. Nothing legitimate arrives
+# from another country, so country is a usable signal here in a way it would
+# not be for a general-purpose site.
+#
+# This is a CrowdSec scenario rather than a Caddy matcher on purpose: geoip
+# enrichment is already in the pipeline (crowdsecurity/geoip-enrich, part of
+# the base install), so this needs no new Caddy plugin, no MaxMind licence
+# key, and no second database to keep updated. The bouncer that enforces it
+# is the one already compiled into Caddy.
+#
+# TV clients are unaffected. This is an IP-level decision made before the
+# request reaches Jellyfin -- there is no redirect, no challenge and no
+# header for a Roku or Tizen app to fail to understand, which is the whole
+# reason auth here is authentik-over-LDAP and not forward_auth.
+#
+# WHAT THIS COSTS: family travelling abroad is locked out of Jellyfin for the
+# ban duration. The escape hatch is the tailnet -- an enrolled device reaches
+# http://jellyfin:8096 directly and never passes through Caddy, so it is not
+# subject to this at all. `cscli decisions delete --ip <addr>` is the manual
+# undo.
+type: trigger
+
+name: local/jellyfin-geoblock-non-us
+description: "Non-US source IP on the public Jellyfin vhost"
+
+# Three guards, and the third is the one that matters.
+#
+#   log_type    -- only Caddy access-log events have target_fqdn at all.
+#   target_fqdn -- scopes this to Jellyfin. Matched on the `jellyfin.` prefix
+#                  rather than a list of FQDNs, so the public domain is not
+#                  written down here and a new jellyfin.* vhost is covered
+#                  automatically. authentik. and the headscale control plane do
+#                  not match, which is the point: locking yourself out of the
+#                  login path from a hotel is a much worse day. `hasPrefix`,
+#                  not `startsWith` -- the latter is not an expr builtin and
+#                  a bad filter is FATAL, so CrowdSec would not start at all
+#                  and Caddy's bouncer would lose its LAPI with it. Verified
+#                  against v1.7.8 by loading both in a throwaway container.
+#   IsoCode     -- MUST be checked non-empty before comparing it to 'US'.
+#                  geoip-enrich leaves it empty whenever it cannot resolve
+#                  an address, including every RFC1918 client. Without the
+#                  emptiness guard, '' != 'US' is true and this bans the
+#                  entire house the first time the lookup fails.
+filter: |
+  evt.Meta.log_type == 'http_access-log' &&
+  hasPrefix(evt.Meta.target_fqdn, 'jellyfin.') &&
+  evt.Enriched.IsoCode != '' &&
+  evt.Enriched.IsoCode != 'US'
+
+# One alert per IP per hour. A scanner sends hundreds of requests before the
+# bouncer's next poll picks up the ban, and without this each one is its own
+# alert row.
+blackhole: 1h
+
+labels:
+  service: http
+  type: scan
+  remediation: true

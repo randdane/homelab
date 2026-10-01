@@ -1,0 +1,75 @@
+name: calibre
+
+# One stack, two services, ONE library volume.
+#
+# The legacy Calibre/ and Calibre-Web/ directories each declared their own
+# separate books volume. Calibre-Web reads the metadata.db that Calibre
+# writes, so with separate volumes it would have started cleanly and shown
+# an empty library forever. They are inseparable by design, so they share a
+# lifecycle here.
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: precious
+  purpose: Ebook library -- Calibre manages and converts, Calibre-Web is the reading front end
+  prerequisites: Calibre must create the library once before Calibre-Web can find metadata.db
+  description: Two services over one shared library volume
+
+services:
+  calibre:
+    # Full Calibre desktop, served over a browser session. Used for importing,
+    # editing metadata, and format conversion.
+    image: linuxserver/calibre:9.13.0
+    container_name: calibre
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    ports:
+      - "${PORT:-8088}:8080"
+    volumes:
+      - config:/config
+      - books:/books
+    labels:
+      homepage.group: Media
+      homepage.name: Calibre
+      homepage.description: Ebook library management and conversion
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-8088}
+      homepage.icon: calibre
+      docker-volume-backup.stop-during-backup: "true"
+
+  calibre-web:
+    image: linuxserver/calibre-web:0.6.27
+    container_name: calibre-web
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # Enables ebook format conversion, which needs Calibre's binaries.
+      - DOCKER_MODS=linuxserver/mods:universal-calibre
+    ports:
+      - "${WEB_PORT:-8089}:8083"
+    volumes:
+      - web-config:/config
+      # The same library. Read-write because Calibre-Web can edit metadata
+      # and accept uploads.
+      - books:/books
+    labels:
+      homepage.group: Media
+      homepage.name: Calibre-Web
+      homepage.description: Browse and read the ebook library
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${WEB_PORT:-8089}
+      homepage.icon: calibre-web
+      docker-volume-backup.stop-during-backup: "true"
+
+volumes:
+  # The library: the books themselves plus metadata.db.
+  books:
+  # Calibre's own settings.
+  config:
+  # Calibre-Web's users, shelves, and read state -- separate from Calibre's.
+  web-config:

@@ -1,0 +1,36 @@
+title: homelab
+theme: dark
+headerStyle: clean
+
+# Groups render in the order listed here. A group name that appears in a
+# homepage.group label but not below still renders -- appended at the end,
+# alphabetically -- so a new stack is never invisible, just unordered.
+# Order is "what am I most likely to be looking for", not alphabetical.
+layout:
+  Media:
+    style: row
+    columns: 4
+  Files:
+    style: row
+    columns: 4
+  Home:
+    style: row
+    columns: 4
+  Finance:
+    style: row
+    columns: 3
+  Automation:
+    style: row
+    columns: 3
+  Network:
+    style: row
+    columns: 3
+  Security:
+    style: row
+    columns: 3
+  Ops:
+    style: row
+    columns: 4
+  Observability:
+    style: row
+    columns: 3

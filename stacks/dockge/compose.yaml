@@ -1,0 +1,88 @@
+name: dockge
+
+# Read-only by construction. Dockge has no read-only mode of its own, and
+# mounting /var/run/docker.sock with :ro does NOT make the Docker API
+# read-only -- the flag governs the socket file's permissions, not the API
+# calls made over it. A container with a ":ro" socket can still start, stop,
+# and delete anything on the host.
+#
+# So the socket goes through a proxy that refuses every write method
+# instead. Dockge can list and inspect; it cannot change anything.
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: none
+  purpose: A browser view of what is running, without giving a web app control of the host
+  prerequisites: none
+  description: Read-only by socket proxy -- git is the source of truth for compose files, not this
+
+services:
+  dockge:
+    image: louislam/dockge:1.5.0
+    container_name: dockge
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      # Talks to the proxy, never to the real socket.
+      - DOCKER_HOST=tcp://socket-proxy:2375
+      # Deliberately NOT this repo. Dockge writes to its stacks directory,
+      # and two sources of truth for the same compose files is how configs
+      # silently drift.
+      - DOCKGE_STACKS_DIR=/opt/stacks
+    ports:
+      - "${PORT:-5001}:5001"
+    volumes:
+      - data:/app/data
+      - stacks:/opt/stacks
+    depends_on:
+      - socket-proxy
+    labels:
+      homepage.group: Ops
+      homepage.name: Dockge
+      homepage.description: Read-only view of running containers
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-5001}
+      homepage.icon: dockge
+
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    container_name: dockge-socket-proxy
+    restart: unless-stopped
+    environment:
+      # POST=0 is the setting that makes this read-only. Everything below is
+      # a GET-only allowance for the endpoints Dockge reads.
+      - POST=0
+      - CONTAINERS=1
+      - SERVICES=1
+      - TASKS=1
+      - IMAGES=1
+      - NETWORKS=1
+      - VOLUMES=1
+      - INFO=1
+      - VERSION=1
+      # Explicitly denied: these grant host takeover even read-only.
+      - EXEC=0
+      - SECRETS=0
+      - CONFIGS=0
+      - SWARM=0
+      - NODES=0
+      - PLUGINS=0
+      - SYSTEM=0
+      - AUTH=0
+      - BUILD=0
+      - COMMIT=0
+      - DISTRIBUTION=0
+      - SESSION=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # No ports: reachable only from inside this stack's network.
+
+volumes:
+  # Dockge's own settings and its (empty, deliberately) stacks directory.
+  data:
+    labels:
+      homelab.backup: exclude
+  stacks:
+    labels:
+      homelab.backup: exclude

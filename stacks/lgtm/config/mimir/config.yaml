@@ -1,0 +1,61 @@
+# Defaults to true. Left on, every write from the collector and every query
+# from Grafana would fail authorization on a missing X-Scope-OrgID header.
+# With it off, Mimir assigns every request the tenant "anonymous".
+multitenancy_enabled: false
+
+server:
+  http_listen_port: 8080
+  log_level: warn
+
+common:
+  storage:
+    backend: filesystem
+    filesystem:
+      dir: /data/common
+
+blocks_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/blocks
+  bucket_store:
+    sync_dir: /data/tsdb-sync
+  tsdb:
+    dir: /data/tsdb
+
+ruler_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/ruler
+
+compactor:
+  data_dir: /data/compactor
+
+ingester:
+  ring:
+    replication_factor: 1
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+distributor:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+store_gateway:
+  sharding_ring:
+    replication_factor: 1
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+limits:
+  compactor_blocks_retention_period: 168h
+  # Single laptop, no reason to throttle ourselves.
+  ingestion_rate: 100000
+  ingestion_burst_size: 200000
+  out_of_order_time_window: 5m
+
+usage_stats:
+  enabled: false

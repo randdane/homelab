@@ -1,0 +1,42 @@
+# Invidious configuration. Bind-mounted :ro.
+#
+# Secrets are NOT here. `database_url` and `hmac_key` come from the
+# environment (INVIDIOUS_DATABASE_URL, INVIDIOUS_HMAC_KEY) so nothing
+# sensitive is committed -- the legacy config file carried a real hmac_key
+# in git.
+#
+# This is a deliberately minimal file. The upstream sample is ~700 lines of
+# commented defaults; everything omitted here uses those defaults.
+
+# Create and migrate the schema on startup. This is what replaces the
+# legacy init-invidious-db.sh and its nine .sql files -- Invidious builds
+# its own tables, so there is nothing to keep in sync by hand.
+check_tables: true
+
+# Emulates YouTube's player JavaScript. Without it, many videos do not play.
+signature_server: invidious-sig-helper:12999
+
+# LAN-only over plain HTTP. Set `domain` and https_only when this goes
+# behind Caddy, or generated links point at the wrong host.
+domain:
+https_only: false
+
+# No public instance, so no open registration and no stats reporting.
+registration_enabled: false
+login_enabled: true
+captcha_enabled: true
+statistics_enabled: false
+popular_enabled: true
+
+# One thread each: this is a single-user instance, and more threads mean
+# more requests to YouTube, which is what gets an IP rate-limited.
+channel_threads: 1
+feed_threads: 1
+full_refresh: false
+
+# If videos stop loading with "This helps protect our community", YouTube
+# has decided the instance looks like a bot. Setting these makes requests
+# identifiable to Google -- the trade-off is the point, not an oversight.
+# See README before enabling.
+# po_token: ""
+# visitor_data: ""

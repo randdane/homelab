@@ -1,0 +1,13 @@
+[Unit]
+Description=Monthly SMART heartbeat for pve's disks
+
+[Timer]
+# smartd speaks up the moment something is wrong; this exists so that silence
+# stays meaningful -- an alerter that has died is silent in exactly the same
+# way as a healthy disk.
+OnCalendar=*-*-01 09:00:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

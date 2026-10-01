@@ -1,0 +1,214 @@
+name: authentik
+
+# Adapted from https://goauthentik.io/docker-compose.yml (tag 2026.8.0).
+# The legacy definition pinned 2025.4.0 and still ran a Redis container --
+# upstream dropped Redis, so it is deliberately absent here.
+
+x-homelab:
+  lifecycle: production
+  host: always-on
+  # `lan`, not `internet`, since 2026-09-06: the browser vhost
+  # authentik.<PUBLIC_DOMAIN> is gated by a remote_ip allowlist to the tailnet
+  # and LAN, and auth.<DUCKDNS_HOST> -- which was public -- is retired. Family
+  # logins reach it over LDAP, container-to-container on `edge`, never from
+  # outside. exposure states what can reach this, and nothing on the internet
+  # can.
+  exposure: lan
+  # But patching it is still an internet-tier concern, which is why this key
+  # exists. authentik issues the tokens Jellyfin accepts, and Jellyfin IS
+  # public -- so an unpatched identity provider is an internet-facing problem
+  # reached through a LAN-only door. Without this, correcting `exposure` would
+  # have silently dropped authentik out of check_updates.py's alert set, which
+  # is the sort of fix that looks like tidying and removes a control.
+  patch_priority: internet
+  data: precious
+  purpose: SSO in front of anything reachable from outside the house
+  prerequisites: PG_PASS and AUTHENTIK_SECRET_KEY in .env; the `edge` network; Caddy in front for TLS
+  description: Identity provider -- nothing depends on it until it actually fronts a service
+
+x-authentik-env: &authentik-env
+  AUTHENTIK_POSTGRESQL__HOST: postgresql
+  AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+  AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+  AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS:?set PG_PASS in .env}
+  AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?set AUTHENTIK_SECRET_KEY in .env}
+  AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+
+services:
+  # Postgres 18. The mount point is NOT /var/lib/postgresql/data any more:
+  # the 18+ images store data in a major-version subdirectory
+  # (PGDATA=/var/lib/postgresql/18/docker) and declare the volume one level
+  # up, so pg_upgrade --link can work without crossing a mount boundary.
+  # An 18 image pointed at a 16-shaped mount refuses to start -- loudly, which
+  # is the one merciful part of this. Bumping the tag alone is not the upgrade.
+  #
+  # Major versions do not read each other's data directory: this was migrated
+  # by pg_dump/pg_restore, not in place. See stacks/authentik/README.md.
+  postgresql:
+    image: postgres:18-alpine
+    container_name: authentik-postgres
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - POSTGRES_DB=${PG_DB:-authentik}
+      - POSTGRES_USER=${PG_USER:-authentik}
+      - POSTGRES_PASSWORD=${PG_PASS:?set PG_PASS in .env}
+    volumes:
+      - database:/var/lib/postgresql
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      start_period: 20s
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  server:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2026.8.2}
+    container_name: authentik-server
+    restart: unless-stopped
+    command: server
+    environment:
+      <<: *authentik-env
+      TZ: ${TZ:-America/Chicago}
+    # Bound to loopback, not 0.0.0.0. Caddy reaches this over the `edge`
+    # network and terminates TLS; publishing it on the LAN as well would
+    # serve the admin UI unencrypted for no gain.
+    #
+    # Loopback rather than nothing because the initial-setup flow has to be
+    # reachable before Caddy fronts it — and whoever loads that flow first
+    # claims the admin account. Bootstrap through an ssh tunnel:
+    #   ssh -L 9000:localhost:9000 <user>@<host>
+    # 9443 is dropped entirely: Caddy does TLS.
+    ports:
+      - "127.0.0.1:${PORT:-9000}:9000"
+    networks:
+      - default
+      - edge
+    volumes:
+      - data:/data
+      - custom-templates:/templates
+    shm_size: 512mb
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    labels:
+      homepage.group: Security
+      homepage.name: Authentik
+      homepage.description: Single sign-on for anything exposed publicly
+      # The old form was doubly wrong: 9000 is bound to 127.0.0.1 on the
+      # server, so http://<host>:9000 could never work from a browser
+      # anywhere else. The tunnel is the escape hatch, not the daily route.
+      # An absolute vhost URL, not ${HOMELAB_HOST}:<port>. The name is served
+      # by Caddy's wildcard, so this works over TLS from the tailnet and the
+      # LAN alike, and it does not go stale if the published port moves.
+      # ${PUBLIC_DOMAIN} must be set in THIS stack's .env -- Compose
+      # interpolates labels from the stack's own file and never from the
+      # repo-wide one, which is also why the domain is not written here.
+      #
+      # `:?` and not a bare ${PUBLIC_DOMAIN}: unset, the label rendered as the
+      # valid-looking `https://authentik.` and the tile pointed at nothing.
+      # Failing to render is the loud version of that, and it fails on the
+      # host doing the deploy rather than in a browser days later.
+      homepage.href: https://authentik.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in this stack's .env -- see .env.example}
+      homepage.icon: authentik
+      docker-volume-backup.stop-during-backup: "true"
+
+  worker:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2026.8.2}
+    container_name: authentik-worker
+    restart: unless-stopped
+    command: worker
+    # NO docker.sock, deliberately. Upstream mounts it so the worker can spawn
+    # and manage outpost containers, which makes the worker host-root: the
+    # Docker API is not a file, and a `:ro` mount does not make its requests
+    # read-only. This is the most exposed stack in the repo -- Caddy fronts it
+    # from the internet -- so it was the worst place to keep that.
+    #
+    # Nothing here used it. This deployment declares its one outpost in
+    # compose (see `ldap` below) with service_connection=None precisely so the
+    # worker never manages containers. Checked against the live database
+    # before removing: both outposts have service_connection_id NULL, and the
+    # only Docker connection was `Local Docker connection`, which authentik's
+    # own outpost_connection_discovery task auto-creates whenever it finds a
+    # socket, referenced by nothing.
+    #
+    # That task is also why removing the mount is sufficient rather than
+    # something to undo in the UI: with no socket there is nothing to
+    # discover, so the connection object does not come back.
+    #
+    # If an outpost ever does need managing, declare it in compose like `ldap`
+    # or give the worker a tightly scoped socket proxy (see stacks/dockge) --
+    # do not hand it the socket again.
+    user: root
+    environment:
+      <<: *authentik-env
+      TZ: ${TZ:-America/Chicago}
+    volumes:
+      - data:/data
+      - certs:/certs
+      - custom-templates:/templates
+    shm_size: 512mb
+    depends_on:
+      postgresql:
+        condition: service_healthy
+
+  # One AUTHENTIK_TAG drives server, worker and ldap on purpose: authentik
+  # requires the outpost version to match the instance, and three separately
+  # pinned tags is how that requirement quietly stops being met.
+  #
+  # The default here is the ONLY pin. It used to be shipped in .env.example too,
+  # so every host had it in .env -- which wins over this default and is
+  # gitignored, making this line decorative. That is not theoretical: on
+  # 2026-09-04 this file said 2026.8.0, the laptop's .env said 2026.5.6, and the
+  # server ran whatever its own .env held. Enforced by
+  # test_image_tags_are_not_pinned_in_env_example.
+  #
+  # Upgrades must follow the release sequence -- do not jump several minor
+  # versions -- and authentik does not support downgrading, so take a
+  # pg_dump first. See stacks/authentik/README.md.
+
+  # The LDAP outpost Jellyfin binds against. Declared here rather than left to
+  # authentik, which would otherwise spawn its own outpost container -- one
+  # that exists outside this repo and drifts silently. The matching Outpost
+  # object is created with service_connection=None, which is what makes the
+  # worker's docker.sock unnecessary (see above).
+  #
+  # Published on the LAN address only, for the Jellyfin LXC.
+  # Plain LDAP, no TLS: the hop is .12 -> .78 across pve's own bridge and never
+  # reaches the physical network. Nothing else may connect -- that is enforced
+  # outside Docker, by the Proxmox firewall ($SITE_DIR/pve/firewall/101.fw) on the VM's NIC, because Docker's
+  # published ports bypass the guest's own iptables INPUT chain.
+  ldap:
+    image: ghcr.io/goauthentik/ldap:${AUTHENTIK_TAG:-2026.8.2}
+    container_name: authentik-ldap
+    restart: unless-stopped
+    environment:
+      AUTHENTIK_HOST: http://server:9000
+      # Plain HTTP is fine here: this hop is inside the compose network.
+      AUTHENTIK_INSECURE: "true"
+      AUTHENTIK_TOKEN: ${AUTHENTIK_LDAP_TOKEN:?set AUTHENTIK_LDAP_TOKEN in .env}
+      TZ: ${TZ:-America/Chicago}
+    ports:
+      - "${HOMELAB_HOST:?set HOMELAB_HOST in .env}:3389:3389"
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      default: {}
+      edge: {}
+
+volumes:
+  # Users, groups, applications, flows -- every provider you configure.
+  database:
+  data:
+  certs:
+  custom-templates:
+
+networks:
+  # Shared with stacks/caddy. Postgres and the worker deliberately stay off
+  # it: nothing Caddy proxies has any business reaching the database.
+  # Created out-of-band:  see docs/host-setup.md 11 (it needs an explicit subnet)
+  edge:
+    external: true

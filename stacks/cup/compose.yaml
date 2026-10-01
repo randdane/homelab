@@ -1,0 +1,90 @@
+name: cup
+
+x-homelab:
+  lifecycle: production
+  host: always-on
+  exposure: lan
+  data: none
+  purpose: Tells you which images have updates, without updating anything
+  prerequisites: none
+  description: The read-only half of update management; Watchtower is the half that acts
+
+services:
+  cup:
+    # The legacy definition pointed at ghcr.io/louislam/cup, which does not
+    # exist -- louislam writes Dockge and Uptime Kuma, not Cup. It could
+    # never have pulled.
+    image: ghcr.io/sergi0g/cup:v3.5.1
+    container_name: cup
+    restart: unless-stopped
+    # `-s` is an argv flag because Cup ignores DOCKER_HOST entirely -- with
+    # the variable set and no socket present it fails outright with
+    # "Socket not found: /var/run/docker.sock". Options precede the
+    # subcommand: `cup [OPTIONS] [COMMAND]`.
+    command: ["-s", "tcp://socket-proxy:2375", "serve"]
+    environment:
+      - TZ=${TZ:-America/Chicago}
+    ports:
+      # Loopback only. On 0.0.0.0 this was reachable from the whole LAN and
+      # from every container on the host -- a compromised Jellyfin could read
+      # every log here. Binding to the LAN address would not have helped: a
+      # container reaches the host's LAN address too. The daily route is
+      # https://cup.<PUBLIC_DOMAIN> through Caddy's remote_ip gate; this port
+      # is the break-glass path:  ssh -fN -L 8010:127.0.0.1:8010 homelab
+      - "127.0.0.1:${PORT:-8010}:8000"
+    labels:
+      homepage.group: Ops
+      homepage.name: Cup
+      homepage.description: Which images have updates waiting
+      homepage.href: https://cup.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in this stack's .env -- see .env.example}
+      homepage.icon: cup
+    depends_on: [socket-proxy]
+    # `admin`, not `edge`: Caddy must reach this, and nothing else should.
+    # Every public-facing container is on `edge`, so joining it would hand
+    # them the logs directly. See docs/host-setup.md 12.
+    networks:
+      - default
+      - admin
+
+  socket-proxy:
+    # `:ro` on the docker socket restricts the FILE, not the Docker API --
+    # a container holding it can still create a privileged container that
+    # bind-mounts /, which is host root. This proxy is what actually
+    # restricts it. See docs/lessons-learned.md §27.
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    container_name: cup-socket-proxy
+    restart: unless-stopped
+    environment:
+      # The setting that makes this read-only.
+      - POST=0
+      # Measured 2026-09-03: Cup calls /containers/json and /images/json.
+      #
+      # It also calls /services once at startup, and that is DENIED on
+      # purpose -- it is a Swarm endpoint, this host is not a Swarm, and
+      # SERVICES=1 would be granting a permission to silence a log line. Cup
+      # takes the 403 and carries on: verified locally, 104 images checked,
+      # "Ready to start!", HTTP 200. A single 403 for /services in the proxy
+      # log is expected; anything else there is not.
+      - CONTAINERS=1
+      - IMAGES=1
+      # Explicitly denied. Each of these grants host takeover on its own,
+      # and some have GET forms that POST=0 would not stop.
+      - EXEC=0
+      - SECRETS=0
+      - CONFIGS=0
+      - SWARM=0
+      - NODES=0
+      - PLUGINS=0
+      - SYSTEM=0
+      - AUTH=0
+      - BUILD=0
+      - COMMIT=0
+      - DISTRIBUTION=0
+      - SESSION=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # No ports: reachable only from inside this stack's network.
+
+networks:
+  admin:
+    external: true

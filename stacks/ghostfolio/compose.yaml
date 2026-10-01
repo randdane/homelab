@@ -1,0 +1,104 @@
+name: ghostfolio
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: precious
+  purpose: Tracks investment holdings and performance in one place
+  prerequisites: ACCESS_TOKEN_SALT, JWT_SECRET_KEY and POSTGRES_PASSWORD in .env
+  description: Transactions entered by hand -- nothing else has this history
+
+services:
+  ghostfolio:
+    image: ghostfolio/ghostfolio:3.47.0
+    container_name: ghostfolio
+    restart: unless-stopped
+    init: true
+    # Upstream's hardening, kept verbatim.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - NODE_ENV=production
+      # sslmode=disable, not `prefer`: this Postgres is not built with SSL,
+      # and Prisma treats `prefer` as "try TLS", which fails the migration
+      # with `P1011 TlsConnectionError` before the app ever starts. The
+      # connection never leaves this stack's private network.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-ghostfolio}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-ghostfolio}?connect_timeout=300&sslmode=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      # Hashes the security tokens users log in with. Changing it locks
+      # every existing account out permanently -- there is no password to
+      # fall back on, the token IS the credential.
+      - ACCESS_TOKEN_SALT=${ACCESS_TOKEN_SALT:?set ACCESS_TOKEN_SALT in .env}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env}
+    ports:
+      - "${PORT:-3333}:3333"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      homepage.group: Finance
+      homepage.name: Ghostfolio
+      homepage.description: Portfolio performance and allocation
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-3333}
+      homepage.icon: ghostfolio
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3333/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: ghostfolio-postgres
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - POSTGRES_DB=${POSTGRES_DB:-ghostfolio}
+      - POSTGRES_USER=${POSTGRES_USER:-ghostfolio}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: ghostfolio-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --pass $${REDIS_PASSWORD} ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+
+volumes:
+  # Every transaction, entered by hand. Not reconstructible from anywhere.
+  pg-data:

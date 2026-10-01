@@ -1,0 +1,110 @@
+name: tubearchivist
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: precious
+  purpose: Keeps a local copy of YouTube channels worth having after they are taken down
+  prerequisites: TA_PASSWORD and ELASTIC_PASSWORD in .env; several GB of RAM for Elasticsearch
+  description: Downloads, indexes, and serves an offline video library
+
+services:
+  tubearchivist:
+    image: bbilly1/tubearchivist:v0.5.10
+    container_name: tubearchivist
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - HOST_UID=${PUID:-1000}
+      - HOST_GID=${PGID:-1000}
+      - ES_URL=http://archivist-es:9200
+      - REDIS_CON=redis://archivist-redis:6379
+      # Must include scheme and port, and must match how you actually reach
+      # it -- TubeArchivist builds absolute URLs from this.
+      - TA_HOST=${TA_HOST:-http://localhost:8001}
+      - TA_USERNAME=${TA_USERNAME:-tubearchivist}
+      - TA_PASSWORD=${TA_PASSWORD:?set TA_PASSWORD in .env}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?set ELASTIC_PASSWORD in .env}
+    ports:
+      - "${PORT:-8001}:8000"
+    volumes:
+      - media:/youtube
+      - cache:/cache
+    depends_on:
+      archivist-es:
+        condition: service_healthy
+      archivist-redis:
+        condition: service_started
+    labels:
+      homepage.group: Media
+      homepage.name: TubeArchivist
+      homepage.description: Archived YouTube channels, searchable offline
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-8001}
+      homepage.icon: tubearchivist
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 2m
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  archivist-redis:
+    image: redis:7-alpine
+    container_name: archivist-redis
+    restart: unless-stopped
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  archivist-es:
+    # TubeArchivist's own Elasticsearch build. amd64 only -- on arm64 use the
+    # official elasticsearch image at the matching major version instead.
+    image: bbilly1/tubearchivist-es:8.19.0
+    container_name: archivist-es
+    restart: unless-stopped
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?set ELASTIC_PASSWORD in .env}
+      # 1GB heap. Elasticsearch will take everything it is offered otherwise,
+      # and this box has other stacks on it.
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - xpack.security.enabled=true
+      - discovery.type=single-node
+      - path.repo=/usr/share/elasticsearch/data/snapshot
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es:/usr/share/elasticsearch/data
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:9200/_cluster/health | grep -qE '200|401'"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+volumes:
+  # The downloaded videos. Large, and the whole point -- but re-downloadable
+  # only while the source still exists, which is exactly what this hedges
+  # against. Excluded from the nightly tarball on size grounds; see README.
+  media:
+    labels:
+      homelab.backup: exclude
+  # The index: metadata, subtitles, playlists, watch state.
+  es:
+  cache:
+    labels:
+      # Thumbnails and working files, regenerated on demand.
+      homelab.backup: exclude
+  redis:
+    labels:
+      # Task queue only.
+      homelab.backup: exclude

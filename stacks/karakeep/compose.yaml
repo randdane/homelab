@@ -1,0 +1,153 @@
+name: karakeep
+
+# Image NAMES follow upstream; the versions deliberately do not:
+# https://github.com/karakeep-app/karakeep/blob/main/docker/docker-compose.yml
+# Upstream uses the rolling `release` tag for both karakeep and its chrome
+# image. Everything else in this repo is pinned so that what ran yesterday is
+# knowable, and a bookmark archiver that silently changes version is no
+# exception.
+# The legacy definition pointed at gcr.io/zenika-hub/alpine-chrome:123, which
+# no longer exists -- archiving would have failed silently while the app
+# looked healthy. Upstream ships its own Chrome image now.
+
+x-homelab:
+  lifecycle: production
+  host: always-on
+  exposure: lan
+  data: precious
+  purpose: Bookmarks that still work after the page they point at goes away
+  prerequisites: NEXTAUTH_SECRET and MEILI_MASTER_KEY in .env
+  description: Lists, tags, and full-text search over archived page snapshots
+
+services:
+  karakeep:
+    # Pinned, unlike upstream, which ships `release` -- a rolling tag, and
+    # `:latest` under another name. Verified 2026-09-04 that 0.33.2 and
+    # release were the same image (sha256:b069e430...), so pinning changed
+    # nothing that deploys; it only stops the version moving unannounced.
+    # Note the tag carries no `v`, though the GitHub release is tagged
+    # v0.33.2.
+    image: ghcr.io/karakeep-app/karakeep:${KARAKEEP_VERSION:-0.33.2}
+    container_name: karakeep
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - DATA_DIR=/data
+      - MEILI_ADDR=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
+      - BROWSER_WEB_URL=http://chrome:9222
+      # Signs session cookies. Changing it logs everyone out.
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:?set NEXTAUTH_SECRET in .env}
+      # Where the browser reaches it. Must match the vhost, or login
+      # redirects to the wrong origin.
+      - NEXTAUTH_URL=${NEXTAUTH_URL:?set NEXTAUTH_URL in .env}
+      - DISABLE_SIGNUPS=${DISABLE_SIGNUPS:-false}
+      # AI summaries/tags. Blank key = inference off. Auto-tagging defaults
+      # to on upstream, and would invent free-form tags on every crawl, so
+      # it stays off until a fixed tag list exists.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - INFERENCE_TEXT_MODEL=${INFERENCE_TEXT_MODEL:-gpt-6-luna}
+      - INFERENCE_ENABLE_AUTO_TAGGING=${INFERENCE_ENABLE_AUTO_TAGGING:-false}
+      - INFERENCE_ENABLE_AUTO_SUMMARIZATION=${INFERENCE_ENABLE_AUTO_SUMMARIZATION:-false}
+      # Logged-in cookies for sites that wall the headless crawler (Reddit
+      # serves a bot challenge otherwise). Blank = none. A malformed file
+      # aborts crawler startup for every site, so build it with
+      # scripts/karakeep-cookies.py, which normalizes the format.
+      - BROWSER_COOKIE_PATH=${BROWSER_COOKIE_PATH:-}
+      # SSO through Authentik (application `karakeep`, group karakeep-users).
+      # Blank client ID = the button is not shown. Email linking attaches the
+      # login to the existing account with the same address; safe only
+      # because every Authentik account is admin-made. Password login stays.
+      # The backend reaches Authentik via @authentik_oidc_internal (Caddy).
+      - OAUTH_WELLKNOWN_URL=https://authentik.${PUBLIC_DOMAIN}/application/o/karakeep/.well-known/openid-configuration
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET:-}
+      - OAUTH_PROVIDER_NAME=Authentik
+      - OAUTH_ALLOW_DANGEROUS_EMAIL_ACCOUNT_LINKING=true
+    ports:
+      - "${PORT:-3006}:3000"
+    volumes:
+      - data:/data
+      # Secrets live outside the repo, in the host user's XDG dir.
+      - ${HOME}/.local/share/_r_/karakeep:/secrets:ro
+    depends_on:
+      - meilisearch
+      - chrome
+    # /api/health answers without a login. wget, not curl: verified
+    # 2026-09-18 that the image ships only wget.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    # Joins `edge` so Caddy can reach it by container name for the
+    # karakeep.<PUBLIC_DOMAIN> vhost. Chrome and Meilisearch stay on
+    # `default` only: nothing outside this stack needs them.
+    networks:
+      - default
+      - edge
+    labels:
+      homepage.group: Files
+      homepage.name: Karakeep
+      homepage.description: Bookmarks, archived and searchable
+      homepage.href: https://karakeep.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      homepage.icon: karakeep
+      docker-volume-backup.stop-during-backup: "true"
+
+  chrome:
+    # Headless Chrome, used to render and snapshot each saved page. This is
+    # the difference between a bookmark and an archive.
+    #
+    # Pinned to the Chrome build, not to a karakeep version -- this image is
+    # versioned independently and only ever publishes one such tag at a
+    # time (151.0.7922.47-r1, plus its two per-arch variants, `latest` and
+    # `release`). Deliberately NOT driven by KARAKEEP_VERSION: the two move
+    # apart, and one variable over both would force a fictional pairing.
+    # Verified identical to `release` on 2026-09-04 (sha256:5b19bbb1...).
+    image: ghcr.io/karakeep-app/karakeep-chrome:151.0.7922.47-r1
+    container_name: karakeep-chrome
+    restart: unless-stopped
+    # Chrome renders through /dev/shm. Docker's 64 MB default was 94% full
+    # during a bulk recrawl on 2026-09-28 and tabs died with "Target
+    # crashed" / "Page crashed" on about 1 crawl in 6.
+    shm_size: 1gb
+    # No `command:` override. The legacy definition passed Chrome flags that
+    # suited the old alpine-chrome image; this image ships its own run.sh
+    # which starts Chrome on 9223 and socat-forwards 9222 to it. Overriding
+    # the command leaves socat with nothing to forward to, and the container
+    # stays "Up" while every archive silently fails.
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.41.0
+    container_name: karakeep-meilisearch
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - MEILI_NO_ANALYTICS=true
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
+    # 127.0.0.1, not localhost: busybox wget resolves localhost to ::1 and
+    # Meilisearch listens on IPv4 only -- refused, unhealthy forever.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7700/health >/dev/null || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    volumes:
+      - meilisearch-data:/meili_data
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+
+networks:
+  edge:
+    external: true
+
+volumes:
+  # Bookmarks, tags, lists, and the archived page snapshots.
+  data:
+  meilisearch-data:
+    labels:
+      # A search index rebuilt from `data` on demand. Backing it up would
+      # double the archive for something derivable.
+      homelab.backup: exclude

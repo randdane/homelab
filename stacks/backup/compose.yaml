@@ -1,0 +1,296 @@
+name: backup
+
+# Nightly archives of every named volume in this repo.
+#
+# This service does NOT auto-discover volumes. Adding a stateful stack means
+# adding two lines here: one under the backup service's volumes, one under the
+# top-level volumes block. The stop-during-backup label on the source
+# container is what makes the archive consistent rather than mid-write.
+
+x-homelab:
+  lifecycle: production
+  purpose: Nightly archives of every registered volume -- the reason a dead disk is survivable
+  description: offen/docker-volume-backup, 3am, volumes registered explicitly
+  host: both
+  exposure: internal
+  data: none
+  prerequisites: none
+
+# NOT ON THIS HOST, commented out 2026-09-20 at the pve cutover.
+#
+# The 37 volumes below belong to stacks that are not deployed here. They
+# existed on the first server as leftovers from past deployments, so the backup
+# container mounted them and every archive carried them along. On the VM they
+# do not exist, and an external volume that is absent stops this container
+# from starting at all -- which is how the cutover came up with 25 containers
+# and no nightly archive.
+#
+# They are commented rather than deleted because the data is real: it is in
+# `homelab-2026-09-20T20-35-54.tar.gz` and in B2, and nothing writes to it
+# while the stacks are down. Creating them as empty volumes instead would
+# have started the container and produced archives that look healthy and
+# restore nothing.
+#
+# Uncomment a line when its stack is deployed here. Once the old host's disk is
+# wiped, the archive is the only copy.
+
+services:
+  backup:
+    image: offen/docker-volume-backup:v2
+    container_name: backup
+    restart: unless-stopped
+    environment:
+      # Required, not decorative: the cron expression below is evaluated in
+      # the container's timezone. Without TZ the container is UTC and the
+      # "3am" backup runs at 9pm or 10pm local, during active use.
+      - TZ=${TZ:-America/Chicago}
+      # Never fires: 31 February does not exist. Scheduling is owned by the
+      # homelab-backup systemd timer, which runs the local archive and the
+      # offsite push in order and uses Persistent=true so a run missed while
+      # the host was off happens after the next boot. Container cron has no
+      # catch-up and silently lost two nights in August 2026. Set
+      # BACKUP_CRON_EXPRESSION explicitly to go back to in-container cron on
+      # a host that is genuinely always on.
+      - BACKUP_CRON_EXPRESSION=${BACKUP_CRON_EXPRESSION:-0 0 31 2 *}
+      - BACKUP_FILENAME=homelab-%Y-%m-%dT%H-%M-%S.tar.gz
+      # Three days, not fourteen. This is the number of LOCAL restore points
+      # and it is the only retention knob with no Object Lock floor under it:
+      # B2 refuses to delete an object inside its retention window, so the
+      # offsite side cannot go below lock + margin (stacks/duplicati/README.md).
+      # Locally nothing refuses anything, so "I want three backups" is honoured
+      # here and the offsite window is set separately by Duplicati's keep-time.
+      #
+      # Anything that must survive longer than this does NOT belong in the
+      # archive directory -- pruning is by age and will take it. Put it in
+      # ../keep/ beside it, which nothing prunes and Duplicati still backs up.
+      # It is empty today; the first server's final pre-cutover archive was rescued into
+      # it and dropped again once that data was judged not worth keeping.
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-3}
+      - BACKUP_PRUNING_PREFIX=homelab-
+      # Jellyfin's artwork cache -- posters, backdrops, logos, and one
+      # headshot per cast member across the whole library. Measured
+      # 2026-08-21: 1.1 GB of the 1.1 GB archive, 3,714 image files, against
+      # ~32 MB of data that is actually irreplaceable.
+      #
+      # Excluded because it is REGENERABLE, not because it is large: Jellyfin
+      # re-fetches it from TMDB on a library scan. Size alone would not
+      # justify dropping something from a backup.
+      #
+      # gzip is why it dominated: JPEG and PNG are already compressed, so the
+      # archive compressed to 98% of raw. The .gz was doing nothing.
+      #
+      # The one real loss: artwork you replaced BY HAND in Jellyfin also
+      # lives here and will not come back from TMDB. Nothing auto-fetched is
+      # affected.
+      - BACKUP_EXCLUDE_REGEXP=${BACKUP_EXCLUDE_REGEXP:-jellyfin-config/metadata/}
+    volumes:
+      # Needed to honour docker-volume-backup.stop-during-backup labels.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Where archives land. XDG with a chained default, so no /home/<user> is
+      # committed anywhere and this works unchanged on a server.
+      - ${BACKUP_ARCHIVE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/homelab/backups}:/archive
+      # Sources. One line per stateful volume, read-only.
+      #- lgtm_loki-data:/backup/lgtm-loki:ro
+      #- lgtm_tempo-data:/backup/lgtm-tempo:ro
+      #- lgtm_mimir-data:/backup/lgtm-mimir:ro
+      #- lgtm_grafana-data:/backup/lgtm-grafana:ro
+      # The tailnet's identity: noise + DERP private keys, the node database,
+      # and the Let's Encrypt cache. Restoring the house without this means
+      # re-registering every device by hand.
+      - headscale_data:/backup/headscale-data:ro
+      # life-queue is two volumes and needs both: Vikunja holds the tasks and
+      # their attachments, n8n holds the reminder workflows. Restoring one
+      # without the other gives you a task list that never notifies you, or
+      # notifications with nothing behind them.
+      - life-queue_vikunja-data:/backup/life-queue-vikunja:ro
+      - life-queue_n8n-data:/backup/life-queue-n8n:ro
+      # Forgejo needs both: repositories live in forgejo-data, issues/users/PRs
+      # in Postgres. Restoring one without the other is half an instance.
+      # This is also where the Obsidian vault lives, so it is not optional.
+      - forgejo_forgejo-data:/backup/forgejo-data:ro
+      - forgejo_pg-data:/backup/forgejo-pg:ro
+      # SQLite. The only volume here whose loss is unrecoverable.
+      #- vaultwarden_data:/backup/vaultwarden:ro
+      # Play counts, ratings, playlists -- not regenerable by rescanning.
+      #- navidrome_data:/backup/navidrome:ro
+      # Immich: files and database are useless without each other.
+      #- immich_upload:/backup/immich-upload:ro
+      #- immich_db-data:/backup/immich-pg:ro
+      # Paperless: originals, search index, and metadata -- all three.
+      #- paperless_media:/backup/paperless-media:ro
+      #- paperless_data:/backup/paperless-data:ro
+      #- paperless_pg-data:/backup/paperless-pg:ro
+      # ownCloud: file contents on disk, all metadata in MariaDB.
+      #- owncloud_files:/backup/owncloud-files:ro
+      #- owncloud_mysql:/backup/owncloud-mysql:ro
+      # Config, automations, and all recorded history.
+      #- homeassistant_config:/backup/homeassistant:ro
+      # Recipes, images, and the SQLite database.
+      - mealie_data:/backup/mealie:ro
+      # arr: configs only -- indexers, API keys, quality profiles, requests.
+      #- arr_gluetun-config:/backup/arr-gluetun:ro
+      #- arr_qbittorrent-config:/backup/arr-qbittorrent:ro
+      #- arr_prowlarr-config:/backup/arr-prowlarr:ro
+      #- arr_radarr-config:/backup/arr-radarr:ro
+      #- arr_sonarr-config:/backup/arr-sonarr:ro
+      #- arr_lidarr-config:/backup/arr-lidarr:ro
+      #- arr_bazarr-config:/backup/arr-bazarr:ro
+      #- arr_jellyseerr-config:/backup/arr-jellyseerr:ro
+      # Users, groups, applications, flows.
+      - authentik_database:/backup/authentik-pg:ro
+      - authentik_data:/backup/authentik-data:ro
+      - authentik_certs:/backup/authentik-certs:ro
+      - authentik_custom-templates:/backup/authentik-templates:ro
+      # Certificates and ACME account keys; re-issuing is rate-limited.
+      - caddy_data:/backup/caddy-data:ro
+      - caddy_config:/backup/caddy-config:ro
+      # CrowdSec's alerts and decisions -- the record of what was hitting
+      # the public vhosts before an incident. The hub content in the config
+      # volume re-downloads, but the machine credentials in it do not.
+      - crowdsec_data:/backup/crowdsec-data:ro
+      - crowdsec_config:/backup/crowdsec-config:ro
+      # Monitor definitions and the uptime history behind them. The
+      # monitors are tedious to rebuild by hand; the history is the only
+      # record of how often something has been flapping.
+      - uptime-kuma_data:/backup/uptime-kuma:ro
+      #- pihole_pihole-data:/backup/pihole:ro
+      # Bookmarks and their archived page snapshots.
+      - karakeep_data:/backup/karakeep:ro
+      # Every note revision the plugin has synced.
+      #- obsidian-livesync_data:/backup/obsidian:ro
+      # Job definitions and the block database incrementals depend on.
+      - duplicati_config:/backup/duplicati:ro
+      # Workflows, execution history, and encrypted credentials.
+      #- n8n_data:/backup/n8n:ro
+      # Flows plus the encrypted provider-key store.
+      #- flowise_data:/backup/flowise:ro
+      # The ebook library plus both tools' settings.
+      #- calibre_books:/backup/calibre-books:ro
+      #- calibre_config:/backup/calibre-config:ro
+      #- calibre_web-config:/backup/calibre-web-config:ro
+      # TubeArchivist's index: metadata, subtitles, watch state. The video
+      # library itself is excluded on size grounds -- see that stack's README.
+      #- tubearchivist_es:/backup/tubearchivist-es:ro
+      # Invidious accounts and subscriptions.
+      #- invidious_postgres-data:/backup/invidious-pg:ro
+      # Hand-entered stock, purchase history, chores.
+      #- grocy_config:/backup/grocy:ro
+      # Training history and uploaded exercise images.
+      #- wger_pg-data:/backup/wger-pg:ro
+      #- wger_media:/backup/wger-media:ro
+      # Every transaction, entered by hand, in both finance apps.
+      #- ghostfolio_pg-data:/backup/ghostfolio:ro
+      #- myfin_db-data:/backup/myfin:ro
+      # ntfy's users and tokens. The message cache in the same volume is
+      # disposable; auth.db is not.
+      - ntfy_data:/backup/ntfy:ro
+
+volumes:
+  #lgtm_loki-data:
+  #  external: true
+  #lgtm_tempo-data:
+  #  external: true
+  #lgtm_mimir-data:
+  #  external: true
+  #lgtm_grafana-data:
+  #  external: true
+  headscale_data:
+    external: true
+  life-queue_vikunja-data:
+    external: true
+  life-queue_n8n-data:
+    external: true
+  forgejo_forgejo-data:
+    external: true
+  forgejo_pg-data:
+    external: true
+  #vaultwarden_data:
+  #  external: true
+  #navidrome_data:
+  #  external: true
+  #immich_upload:
+  #  external: true
+  #immich_db-data:
+  #  external: true
+  #paperless_media:
+  #  external: true
+  #paperless_data:
+  #  external: true
+  #paperless_pg-data:
+  #  external: true
+  #owncloud_files:
+  #  external: true
+  #owncloud_mysql:
+  #  external: true
+  #homeassistant_config:
+  #  external: true
+  mealie_data:
+    external: true
+  #arr_gluetun-config:
+  #  external: true
+  #arr_qbittorrent-config:
+  #  external: true
+  #arr_prowlarr-config:
+  #  external: true
+  #arr_radarr-config:
+  #  external: true
+  #arr_sonarr-config:
+  #  external: true
+  #arr_lidarr-config:
+  #  external: true
+  #arr_bazarr-config:
+  #  external: true
+  #arr_jellyseerr-config:
+  #  external: true
+  authentik_database:
+    external: true
+  authentik_data:
+    external: true
+  authentik_certs:
+    external: true
+  authentik_custom-templates:
+    external: true
+  caddy_data:
+    external: true
+  caddy_config:
+    external: true
+  crowdsec_data:
+    external: true
+  crowdsec_config:
+    external: true
+  uptime-kuma_data:
+    external: true
+  #pihole_pihole-data:
+  #  external: true
+  karakeep_data:
+    external: true
+  #obsidian-livesync_data:
+  #  external: true
+  duplicati_config:
+    external: true
+  #n8n_data:
+  #  external: true
+  #flowise_data:
+  #  external: true
+  #calibre_books:
+  #  external: true
+  #calibre_config:
+  #  external: true
+  #calibre_web-config:
+  #  external: true
+  #tubearchivist_es:
+  #  external: true
+  #invidious_postgres-data:
+  #  external: true
+  #grocy_config:
+  #  external: true
+  #wger_pg-data:
+  #  external: true
+  #wger_media:
+  #  external: true
+  #ghostfolio_pg-data:
+  #  external: true
+  #myfin_db-data:
+  #  external: true
+  ntfy_data:
+    external: true

@@ -1,0 +1,97 @@
+name: duplicati
+
+x-homelab:
+  lifecycle: production
+  host: always-on
+  exposure: lan
+  data: precious
+  purpose: Encrypted offsite copies -- the local nightly archives do not survive the house
+  prerequisites: SETTINGS_ENCRYPTION_KEY and a remote destination with its own credentials
+  description: Complements the backup stack rather than replacing it; that one is local, this one leaves the building
+
+services:
+  duplicati:
+    image: linuxserver/duplicati:2.3.0
+    container_name: duplicati
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # Encrypts Duplicati's own settings database, which holds the
+      # credentials for every remote destination. Required by 2.1+, and
+      # losing it means re-entering every backup job's configuration.
+      - SETTINGS_ENCRYPTION_KEY=${SETTINGS_ENCRYPTION_KEY:?set SETTINGS_ENCRYPTION_KEY in .env}
+      - DUPLICATI__WEBSERVICE_PASSWORD=${WEBSERVICE_PASSWORD:?set WEBSERVICE_PASSWORD in .env}
+      # 2.1+ rejects any Host it does not list. The vhost, plus loopback for
+      # scripts/run_backups.sh and the ssh tunnel.
+      - DUPLICATI__WEBSERVICE_ALLOWED_HOSTNAMES=duplicati.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env};localhost;127.0.0.1
+    ports:
+      # Loopback only. This UI can read the B2 credentials, restore any
+      # volume, and delete backup sets -- more authority than anything else
+      # on this host, and it was the last service still published LAN-wide.
+      # scripts/run_backups.sh reaches it at 127.0.0.1 from the host itself,
+      # so the nightly chain is unaffected.
+      # The UI is https://duplicati.<PUBLIC_DOMAIN> since 2026-09-29, behind
+      # the remote_ip gate AND Authentik forward-auth AND its own password.
+      # If Caddy or Authentik is down:  ssh -N -L 8200:127.0.0.1:8200 homelab
+      - "127.0.0.1:${PORT:-8200}:8200"
+    volumes:
+      - config:/config
+      # What Duplicati reads: the archive directory the backup stack writes
+      # to. A BIND MOUNT, not a named volume -- an empty named volume here
+      # would have Duplicati dutifully backing up nothing, on schedule,
+      # reporting success. Backing up finished tarballs also avoids reading
+      # live databases mid-write; the backup stack already made them
+      # consistent by stopping the containers.
+      - ${BACKUP_ARCHIVE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/homelab/backups}:/source:ro
+      # The state directory the archives sit inside, so that loose files
+      # BESIDE backups/ are protected too. Added 2026-09-23.
+      #
+      # Two real losses prompted it, both found by accident: the Uptime Kuma
+      # push token did not survive the 2026-09-20 migration, and
+      # porkbun-dns-backup-*.json -- the documented rollback for the DNS
+      # wildcard removal -- existed only on the first server, a machine backed up by
+      # nothing and scheduled for wipe. Neither was covered by /source above,
+      # which is the archive directory alone.
+      #
+      # A SEPARATE mount rather than widening /source to the parent, because
+      # the two directories are only nested by default. BACKUP_ARCHIVE_DIR can
+      # point anywhere -- stacks/backup/.env.example suggests
+      # /mnt/backup/homelab -- and mounting ITS parent would sweep in whatever
+      # else lives on that disk.
+      #
+      # Where they DO nest, as here, /source-state/backups duplicates /source.
+      # The job excludes it; see README.md. If that filter is ever lost the
+      # cost is duplicate content, which dedups to nearly nothing -- not
+      # runaway growth. That asymmetry is why the exclusion lives here rather
+      # than in the backup stack's BACKUP_EXCLUDE_REGEXP, where losing it
+      # would put every previous tarball inside the next one.
+      - ${XDG_STATE_HOME:-${HOME}/.local/state}/homelab:/source-state:ro
+      # Only used for a local destination; remote destinations need none.
+      - backups:/backups
+    # `admin`, not `edge`, like dozzle and cup: only Caddy shares it, so no
+    # public-facing container can reach this UI around the gate.
+    networks:
+      - default
+      - admin
+    labels:
+      homepage.group: Ops
+      homepage.name: Duplicati
+      homepage.description: Encrypted offsite backups
+      homepage.href: https://duplicati.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      homepage.icon: duplicati
+      docker-volume-backup.stop-during-backup: "true"
+
+networks:
+  admin:
+    external: true
+
+volumes:
+  # Job definitions, schedules, and the local block database that makes
+  # incremental backups possible. Losing it forces a full re-upload.
+  config:
+  backups:
+    labels:
+      # Duplicati's own output. Backing up a backup is circular.
+      homelab.backup: exclude

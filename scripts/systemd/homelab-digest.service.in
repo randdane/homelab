@@ -1,0 +1,26 @@
+# Template. Do NOT symlink this file into systemd — it is not a valid unit
+# until scripts/install-systemd.sh substitutes the @PLACEHOLDERS@.
+[Unit]
+Description=Send the morning homelab digest to the phone
+
+# If the digest cannot send, this retry goes through the same path and will
+# probably fail too. That is accepted: the phone's 09:00 Tasker check is what
+# catches a digest that never arrived.
+OnFailure=homelab-failure-notify@%n.service
+
+# Kuma's database is read through docker exec.
+After=docker.service
+Wants=docker.service
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+@USERLINES@
+Environment=PATH=@PATH@
+Environment=HOME=@HOME@
+# No SuccessExitStatus=2. Exit 2 means no usable credentials, so no digest
+# was sent; problems found while collecting are content and exit 0.
+# A wedged dockerd hangs status.observe_services()'s docker calls forever with
+# no timeout of their own; this bound fails the unit so OnFailure fires
+# instead of the digest silently never arriving.
+TimeoutStartSec=300
+ExecStart=@UV@ run scripts/digest.py

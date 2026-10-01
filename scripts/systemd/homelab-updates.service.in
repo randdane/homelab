@@ -1,0 +1,22 @@
+# Template. Do NOT symlink this file into systemd — it is not a valid unit
+# until scripts/install-systemd.sh substitutes the @PLACEHOLDERS@.
+[Unit]
+Description=Report pending image updates for the stacks at internet patch priority
+Documentation=file:@REPO@/stacks/cup/README.md
+
+OnFailure=homelab-failure-notify@%n.service
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+@USERLINES@
+Environment=PATH=@PATH@
+Environment=HOME=@HOME@
+# Exit 2 is "could not reach Cup". On a laptop asleep or away from the LAN
+# that is the normal case, so the user install tolerates it. On the server Cup
+# runs locally, so unreachable means broken and the system install leaves this
+# line empty: every non-zero exit fails the unit and alerts.
+@UPDATESEXITLINE@
+# A hung command must fail the unit, or OnFailure never fires. Real runs take
+# about 14 s. See scripts/test_unit_timeouts.py.
+TimeoutStartSec=300
+ExecStart=@UV@ run scripts/check_updates.py

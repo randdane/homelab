@@ -1,0 +1,146 @@
+name: caddy
+
+x-homelab:
+  lifecycle: production
+  # always-on, not server: this runs on homelab (the first server until 2026-09-20), and has since Caddy took over
+  # 80/443 from headscale. `server` is the spare server, which runs nothing.
+  host: always-on
+  exposure: internet
+  data: replaceable
+  purpose: The only thing listening on the public internet -- TLS and reverse proxy for what is shared
+  prerequisites: PUBLIC_DOMAIN and DUCKDNS_HOST in the repo-wide .env; DuckDNS resolving to this host; a Porkbun API key with API ACCESS enabled on that domain; the external `edge` network
+  description: Automatic HTTPS; config lives in config/Caddyfile
+
+services:
+  caddy:
+    # Built, not pulled: the CrowdSec bouncer is a compiled-in Caddy plugin.
+    # See Dockerfile. `image:` names the result so it is greppable and so
+    # `docker compose up` does not rebuild on every start.
+    build:
+      context: .
+    image: homelab/caddy-crowdsec:2.11.4
+    container_name: caddy
+    restart: unless-stopped
+    # The repo-wide .env, not this stack's -- PUBLIC_DOMAIN and DUCKDNS_HOST
+    # are shared with scripts/ and with other stacks, and a copy per stack is
+    # how the copies drift. `env_file` puts them straight into the container's
+    # environment, which is where Caddy's {$VAR} reads from; it does NOT feed
+    # Compose's own ${VAR} interpolation, so nothing below may reference them.
+    #
+    # `required: false` is load-bearing, not caution. The default is true, and
+    # a missing file then makes the whole stack UNRENDERABLE -- not just
+    # unstartable. Measured 2026-09-04: on a checkout with no root .env,
+    # `docker compose config` failed outright, so caddy vanished from
+    # docs/ports.md and its two volumes dropped out of the backup-coverage
+    # count (54 -> 52) with one SKIP line to show for it. Every tooling script
+    # here reads stacks through that command. Fail at Caddy instead, where an
+    # empty {$PUBLIC_DOMAIN} is an invalid site address and the container
+    # refuses to start loudly.
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - SITE_ADDRESS=${SITE_ADDRESS:-http://localhost}
+      # Bouncer credential, issued by the agent:
+      #   docker exec crowdsec cscli bouncers add caddy-bouncer
+      # It is shown once and cannot be retrieved; re-issue by deleting the
+      # bouncer and adding it again. Empty here would let Caddy start and
+      # fail every decision lookup, so there is no default.
+      - CROWDSEC_API_KEY=${CROWDSEC_API_KEY:?set CROWDSEC_API_KEY in .env}
+      # Porkbun API credentials, for the DNS-01 challenge that issues the
+      # wildcard certificate. Create them at porkbun.com/account/api and
+      # then -- easy to miss -- switch API ACCESS on for the domain itself
+      # under Domain Management; a key alone gets "domain not opted in".
+      # No default, same reasoning as the bouncer key: starting without these
+      # would leave Caddy retrying the challenge until Let's Encrypt rate
+      # limits the account, which is slow to notice and slow to recover from.
+      - PORKBUN_API_KEY=${PORKBUN_API_KEY:?set PORKBUN_API_KEY in .env}
+      - PORKBUN_API_SECRET_KEY=${PORKBUN_API_SECRET_KEY:?set PORKBUN_API_SECRET_KEY in .env}
+    ports:
+      # Defaults are 80/443, which is what runs on homelab. On the laptop
+      # override them in .env -- `tailscaled` already holds 443 there.
+      #
+      # This comment used to say the opposite: "Do NOT deploy this to the
+      # always-on host: headscale holds 443 there and cannot move." That
+      # arrangement is inverted now. Caddy owns 80/443 on homelab and headscale
+      # sits behind it on :8080 (see config/Caddyfile and
+      # stacks/headscale/README.md), which is what let the control plane keep
+      # its baked-in --login-server URL while sharing the port. Following the
+      # old instruction today would undo the current architecture.
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    volumes:
+      # The DIRECTORY, not the file. A single-file bind mount pins the inode,
+      # and `git pull` replaces the Caddyfile by writing a new file and
+      # renaming over it -- so the container went on seeing the old inode
+      # forever. `caddy reload` then reported success while reloading stale
+      # content, which is the worst available outcome: a deploy that looks
+      # like it worked and changed nothing.
+      #
+      # Measured 2026-09-03: after a pull, host inode 7078604 vs container
+      # inode 7078597, and `grep -c @jellyfin` was 2 on the host and 0 in the
+      # container. Earlier changes appeared to deploy only because they used
+      # `docker compose up -d`, which recreates the container and rebinds.
+      #
+      # A directory mount resolves by path on every open, so a replaced file
+      # is picked up. /etc/caddy holds nothing but the Caddyfile, so there is
+      # nothing to shadow.
+      - ./config:/etc/caddy:ro
+      # Certificates and ACME account keys. Losing this means re-issuing,
+      # and Let's Encrypt rate-limits how often you may.
+      - data:/data
+      - config:/config
+    # Deliberately no homepage.* labels. Caddy has no UI, so its tile was a
+    # link to http://<host>:80 -- the proxy's own front door, which answers
+    # every other tile on the dashboard and nothing of its own. A tile that
+    # cannot be usefully clicked teaches people to stop clicking tiles.
+    # Whether Caddy is up is a monitoring question, and Uptime Kuma answers it.
+    networks:
+      # PINNED, unlike every other stack on this network. Caddy is the only
+      # container here whose IP is an identity rather than an implementation
+      # detail: CrowdSec records a bouncer row per address a key is seen from,
+      # so a Caddy that moves leaves a stale row behind every recreate -- and
+      # the address it vacated gets handed to something else (10.201.7.3 read
+      # as `caddy-bouncer` for a day while life-queue-app held it).
+      #
+      # .240 rather than the .6 it happens to hold today: Docker allocates
+      # dynamically from the low end of the subnet, so a low pin can be taken
+      # by another stack while Caddy is down, and Caddy then FAILS TO START --
+      # trading a cosmetic problem for an edge outage. High addresses are out
+      # of the allocator's way.
+      edge:
+        ipv4_address: 10.201.7.240
+        # Default route stays on `edge`. With three networks Docker picks
+        # one, and adding `admin` had silently moved it there.
+        gw_priority: 1
+      # Admin UIs with no login of their own (dozzle, cup). Kept off `edge` so
+      # the public-facing containers there cannot reach them. Not pinned:
+      # nothing identifies Caddy by its address on this network.
+      admin: {}
+    # No `logging:` block: the host caps every container by default via
+    # /etc/docker/daemon.json (see docs/host-setup.md). Overriding it here
+    # would silently opt this stack out of any future change to that default.
+    healthcheck:
+      # `caddy validate` parses the running config without touching the
+      # network -- it fails if the Caddyfile is broken, which is the failure
+      # that actually happens here.
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  data:
+  config:
+
+networks:
+  # Shared with the stacks Caddy proxies, so it can reach them by container
+  # name. Created out-of-band:  see docs/host-setup.md 11 (it needs an explicit subnet)
+  edge:
+    external: true
+  # Caddy plus the unauthenticated admin UIs, and nothing else. docs/host-setup.md 12
+  admin:
+    external: true

@@ -1,0 +1,30 @@
+# Proxmox firewall for the Jellyfin LXC (CT 102). Copy to /etc/pve/firewall/
+# on the Proxmox host. Inbound: the web UI from the LAN only. Outbound: the
+# internet, plus exactly the LAN services Jellyfin needs -- LDAP and CrowdSec
+# on the Docker VM, and DNS -- and nothing else private.
+[OPTIONS]
+enable: 1
+dhcp: 1
+ndp: 1
+policy_in: DROP
+policy_out: ACCEPT
+
+[IPSET private]
+10.0.0.0/8
+172.16.0.0/12
+192.168.0.0/16
+100.64.0.0/10
+169.254.0.0/16
+224.0.0.0/4
+255.255.255.255/32
+fc00::/7
+fe80::/10
+ff00::/8
+
+[RULES]
+IN ACCEPT -source 10.0.0.0/24 -p tcp -dport 8096
+OUT ACCEPT -dest 10.0.0.78 -p tcp -dport 3389
+OUT ACCEPT -dest 10.0.0.78 -p udp -dport 4242
+OUT ACCEPT -dest 10.0.0.6 -p udp -dport 53
+OUT ACCEPT -dest 10.0.0.6 -p tcp -dport 53
+OUT REJECT -dest +private

@@ -1,0 +1,22 @@
+// Tailnet access policy (Grants, src/dst/ip only). See
+// stacks/headscale/README.md. Once loaded, anything not listed is refused;
+// deleting every rule locks every node out of every other node.
+{
+  "tagOwners": {
+    "tag:server": ["alice@"],
+  },
+
+  "grants": [
+    // Your own untagged devices reach everything.
+    {"src": ["alice@"], "dst": ["*"], "ip": ["*"]},
+    // Servers reach each other and nothing else.
+    {"src": ["tag:server"], "dst": ["tag:server"], "ip": ["*"]},
+  ],
+
+  // Run by `headscale policy check`. A test naming a tag fails until at
+  // least one node carries that tag.
+  "tests": [
+    {"src": "alice@", "accept": ["tag:server:22", "10.0.0.20:22"]},
+    {"src": "tag:server", "accept": ["tag:server:22"], "deny": ["10.0.0.20:22"]},
+  ],
+}

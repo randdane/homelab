@@ -1,0 +1,70 @@
+name: CHANGEME
+
+# Copied from _template/. See ../docs/conventions.md.
+#
+# Named volume for anything the container writes.
+# :ro bind mount from ./config/ for anything you hand-edit.
+
+# Stack intent, read by scripts/status.py. All keys except `description` are
+# required and non-blank; enum values below are the valid ones -- pick, do not
+# invent. Use the literal `none` for prerequisites when there is nothing to
+# record. Schema in ../README.md.
+x-homelab:
+  lifecycle: planned          # planned | developing | production | retired | not-needed
+  host: laptop                # laptop | server | always-on | both
+  exposure: internal          # internal | lan | internet
+  data: none                  # none | replaceable | precious
+  purpose: CHANGEME -- one line, what this is for
+  prerequisites: none
+  # description: optional; falls back to the homepage.description label below.
+
+services:
+  app:
+    image: CHANGEME:latest
+    container_name: CHANGEME
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+    ports:
+      - "${PORT}:80"
+    volumes:
+      # - ./config/settings.yaml:/etc/app/settings.yaml:ro
+      - data:/var/lib/app
+    labels:
+      # Required for anything with a web UI. This is the "why do I care"
+      # text, and it renders on the dashboard. Delete the stack, delete the
+      # docs -- they cannot drift. Delete this block entirely for services
+      # with nothing to link to (collectors, cron jobs, databases).
+      homepage.group: CHANGEME
+      homepage.name: CHANGEME
+      homepage.description: CHANGEME -- one line, why this exists
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT}
+      homepage.icon: CHANGEME
+      # Uncomment if this service writes data that must be consistent.
+      # Then add TWO entries to stacks/backup/compose.yaml -- a /backup mount
+      # and an external volume declaration. It does not auto-discover.
+      # docker-volume-backup.stop-during-backup: "true"
+    # Uncomment ONE of these after checking which binary the image actually
+    # ships. Neither is guaranteed; a healthcheck calling a missing binary
+    # reports unhealthy forever, which is worse than having no healthcheck.
+    #   docker run --rm --entrypoint sh IMAGE -c 'command -v wget; command -v curl'
+    # healthcheck:
+    #   test: ["CMD-SHELL", "wget -q -O- http://localhost:80/ || exit 1"]
+    #   test: ["CMD-SHELL", "curl -fsS http://localhost:80/ || exit 1"]
+    #   interval: 30s
+    #   timeout: 5s
+    #   retries: 3
+    #   start_period: 30s
+
+volumes:
+  # Every named volume is expected to be registered for backup. One that
+  # never should be -- a regenerable cache, a library too big for a nightly
+  # tarball -- opts out here, with a comment saying why:
+  #   cache:
+  #     labels:
+  #       homelab.backup: exclude
+  data:
+
+# No top-level `networks:` here on purpose. Compose already creates a
+# per-project default network -- a named network is only worth declaring
+# when a stack needs to be joined from outside its own compose file.

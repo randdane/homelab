@@ -1,0 +1,18 @@
+[Unit]
+Description=Check weekly whether the stacks at internet patch priority are behind
+
+[Timer]
+# Weekly, and Monday on purpose: an update found on a weekday evening gets
+# applied deliberately, with time to watch it. A Friday alert is either
+# ignored until Monday or applied in a hurry before the weekend — and the
+# stacks this watches are the ones family is using at the weekend.
+OnCalendar=Mon *-*-* 11:00:00
+# The first server was powered off most nights and boots at 04:00 local; without this a
+# Monday spent off is simply skipped.
+Persistent=true
+# Not a race with anything, and nothing downstream waits on it. Spread it out
+# rather than pulling forty registry lookups at the same second every week.
+RandomizedDelaySec=2h
+
+[Install]
+WantedBy=timers.target

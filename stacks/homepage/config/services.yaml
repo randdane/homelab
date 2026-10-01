@@ -1,0 +1,3 @@
+# Intentionally empty. Services are discovered from homepage.* labels on
+# each container -- see docs/conventions.md. Adding entries here creates a
+# second source of truth that will drift from the compose files.

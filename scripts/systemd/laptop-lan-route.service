@@ -1,0 +1,59 @@
+# Prefer the directly-connected LAN route over Tailscale's subnet route.
+#
+# FOR the laptop ONLY, and NOT installed by scripts/install-systemd.sh -- that
+# script drives the server and works from an explicit unit list, so this file is
+# inert until installed by hand. See $SITE_DIR/docs/devices.md.
+#
+# The problem: homelab advertises 192.168.1.0/24 into the tailnet, and the laptop
+# runs with --accept-routes, so tailscaled installs that /24 in table 52.
+# Its `ip rule` sits at priority 5270, while the wifi's own connected route
+# lives in `main` at 32766. Table 52 therefore wins even while the laptop is
+# sitting on that very LAN, and every packet to a neighbour hairpins out to
+# the first server and back over the first server's 100 Mb/s NIC.
+#
+# Tailscale does not prevent this. The check that skips a directly-connected
+# subnet exists on the ADVERTISING side; the accepting side installs what it
+# is given, and --accept-routes is all-or-nothing with no per-route filter.
+# Verified on 1.102.3: six hours of tailscaled logs contain no route-skipping
+# decision, and the /24 stays in table 52 across a wifi link-up.
+#
+# The fix is one policy rule above 5270. `suppress_prefixlength 0` is the
+# load-bearing part -- it makes the SAME rule correct in both locations:
+#
+#   at home  main holds `192.168.1.0/24 proto kernel scope link` (prefix 24,
+#            survives the filter)      -> the LAN route wins
+#   away     main's only match is the default route (prefix 0, suppressed)
+#            -> the rule yields, falls through to 5270, table 52, tailnet
+#
+# So there is nothing to trigger on: no SSID detection, no dispatcher script,
+# no toggling --accept-routes. A location-aware fix would need to be right
+# about the location; this one does not care.
+#
+# Deliberately scoped to 192.168.1.0/24. The IoT /32 routes
+# and the 100.64.0.0/10 tailnet addresses are NOT
+# covered and still resolve through table 52 -- confirmed after the change.
+#
+# PartOf + WantedBy=tailscaled.service is REQUIRED, not a precaution.
+# Measured 2026-09-01: after `systemctl restart tailscaled` the ExecStartPre
+# below exited 2 -- the rule was gone. tailscaled flushes it despite the
+# distinct priority, so without this unit firing on every tailscaled start the
+# fix would disappear at the next restart or package update, silently and with
+# nothing to notice.
+
+[Unit]
+Description=Prefer the local LAN route over the Tailscale subnet route
+After=tailscaled.service
+PartOf=tailscaled.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# `-` on the del: the rule is absent on a cold boot and present on a restart,
+# and both are fine. Without the delete an `ip rule add` would stack a second
+# identical rule every time this unit ran.
+ExecStartPre=-/usr/bin/ip rule del to 192.168.1.0/24 table main suppress_prefixlength 0 priority 5260
+ExecStart=/usr/bin/ip rule add to 192.168.1.0/24 table main suppress_prefixlength 0 priority 5260
+ExecStop=-/usr/bin/ip rule del to 192.168.1.0/24 table main suppress_prefixlength 0 priority 5260
+
+[Install]
+WantedBy=tailscaled.service

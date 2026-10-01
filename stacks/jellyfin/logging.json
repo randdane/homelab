@@ -1,0 +1,66 @@
+{
+    "_comment": [
+        "Jellyfin reads logging.json in preference to logging.default.json, and",
+        "unlike that file this one is not replaced on upgrade. It is a full copy",
+        "of the shipped defaults with ONE change, marked below.",
+        "",
+        "Why: Jellyfin writes two Serilog sinks with different templates. The",
+        "file sink carries a full date; the console sink carried only HH:mm:ss.",
+        "CrowdSec reads the console sink via the Docker datasource, and",
+        "LePresidente/jellyfin-logs expects the file sink's format -- its",
+        "JELLYFIN_CUSTOMDATE grok is YEAR-MONTHNUM-MONTHDAY HOUR:MINUTE:SECOND.",
+        "The date group is optional so the message still matched, but",
+        "evt.StrTime came back empty and dateparse-enrich failed. Live",
+        "detection was unaffected (CrowdSec falls back to arrival time);",
+        "forensic replay of an old log collapsed every event to the replay time.",
+        "",
+        "Copied into the jellyfin_config volume by set_logging.sh -- this file",
+        "is the source of truth, the volume holds a copy. See the crowdsec",
+        "stack README for the full diagnosis.",
+        "",
+        "THE ONE CHANGE: the Console sink's outputTemplate timestamp was",
+        "{Timestamp:HH:mm:ss} and is now {Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz},",
+        "identical to the File sink. Everything else is verbatim defaults.",
+        "",
+        "Comments live at this top level on purpose. Serilog binds the keys",
+        "inside a sink's Args to that sink method's PARAMETERS, so a stray",
+        "_comment in there can fail the sink outright and take console",
+        "logging with it. Only the Serilog section is read; this key is not."
+    ],
+    "Serilog": {
+        "MinimumLevel": {
+            "Default": "Information",
+            "Override": {
+                "Microsoft": "Warning",
+                "System": "Warning"
+            }
+        },
+        "WriteTo": [
+            {
+                "Name": "Console",
+                "Args": {
+                    "outputTemplate": "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] [{ThreadId}] {SourceContext}: {Message:lj}{NewLine}{Exception}"
+                }
+            },
+            {
+                "Name": "Async",
+                "Args": {
+                    "configure": [
+                        {
+                            "Name": "File",
+                            "Args": {
+                                "path": "%JELLYFIN_LOG_DIR%//log_.log",
+                                "rollingInterval": "Day",
+                                "retainedFileCountLimit": 3,
+                                "rollOnFileSizeLimit": true,
+                                "fileSizeLimitBytes": 100000000,
+                                "outputTemplate": "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] [{ThreadId}] {SourceContext}: {Message}{NewLine}{Exception}"
+                            }
+                        }
+                    ]
+                }
+            }
+        ],
+        "Enrich": [ "FromLogContext", "WithThreadId" ]
+    }
+}

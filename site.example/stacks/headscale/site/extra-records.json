@@ -1,0 +1,7 @@
+[
+  {
+    "name": "nas.tailnet.internal",
+    "type": "A",
+    "value": "10.0.0.20"
+  }
+]

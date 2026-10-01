@@ -1,0 +1,50 @@
+name: file-browser
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: none
+  purpose: Poke at server directories from a browser -- media folders, downloads, config
+  prerequisites: none
+  description: Admin tool, not a sync service; it owns no data of its own
+
+services:
+  filebrowser:
+    image: filebrowser/filebrowser:v2.63.23
+    container_name: filebrowser
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    ports:
+      - "${PORT:-8087}:80"
+    volumes:
+      # What you browse. On the server, add read-only bind mounts of the
+      # directories you actually want to reach -- see README. Keep them :ro
+      # unless you specifically need to write.
+      - srv:/srv
+      # Its own user list and settings. Separate from /srv so the database
+      # never appears in the file listing.
+      - database:/database
+    labels:
+      homepage.group: Ops
+      homepage.name: File Browser
+      homepage.description: Browse server directories
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-8087}
+      homepage.icon: filebrowser
+    # No healthcheck block: the image already ships one.
+
+volumes:
+  srv:
+    labels:
+      # A window onto directories other stacks own -- on the server this
+      # becomes bind mounts to real paths. File Browser holds no data of
+      # its own, so there is nothing here to archive.
+      homelab.backup: exclude
+  database:
+    labels:
+      # Users and settings only -- a handful of rows, recreated by deleting
+      # the volume and letting it re-initialise.
+      homelab.backup: exclude

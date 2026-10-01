@@ -1,0 +1,36 @@
+name: duckdns
+
+x-homelab:
+  # Retired 2026-09-24 (#53): Home Assistant's DuckDNS integration updates
+  # the record now, from hardware that is not pve. See README.
+  lifecycle: retired
+  host: always-on
+  exposure: internal
+  data: none
+  purpose: Keeps a public hostname pointed at a home IP that changes without warning
+  prerequisites: >-
+    A duckdns.org subdomain and its account token. The headscale control plane
+    is registered against this hostname, so every tailnet node depends on it
+    resolving; Caddy will too. Verify with a manual update returning OK, not
+    with the container being up -- an invalid token logs KO and keeps running.
+  description: Nothing works from outside the house when this is wrong, and nothing warns you
+
+services:
+  duckdns:
+    image: linuxserver/duckdns:version-af6dcae5
+    container_name: duckdns
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # The legacy definition had the literal strings "yourdomain" and
+      # "yourtoken" -- it would have run happily and updated nothing.
+      - SUBDOMAINS=${DUCKDNS_SUBDOMAINS:?set DUCKDNS_SUBDOMAINS in .env}
+      - TOKEN=${DUCKDNS_TOKEN:?set DUCKDNS_TOKEN in .env}
+      - UPDATE_IP=${UPDATE_IP:-ipv4}
+      # Let Caddy handle certificates; this only updates the A record.
+      - LOG_FILE=false
+
+# No volumes and no ports: it makes an outbound HTTPS request every five
+# minutes and holds nothing.

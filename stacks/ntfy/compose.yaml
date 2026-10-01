@@ -1,0 +1,85 @@
+name: ntfy
+
+x-homelab:
+  lifecycle: production
+  host: always-on
+  exposure: lan
+  data: precious
+  purpose: The one push path to the phone, and the phone's path back to Home Assistant
+  prerequisites: >-
+    Users, per-topic access and tokens are created with the ntfy CLI after
+    first start -- see README. Auth is deny-all, so nothing can publish or
+    subscribe until then.
+  description: Self-hosted ntfy on its published port, deliberately not behind Caddy
+
+services:
+  ntfy:
+    # Pinned: auth.db has a schema, and an unplanned upgrade migrates it.
+    image: binwiederhier/ntfy:v2.28.0
+    container_name: ntfy
+    restart: unless-stopped
+    command: serve
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      # The Android app requires it. The LAN address, not the tailnet one:
+      # The LAN address is reachable on the LAN, over Teleport, and over the
+      # tailnet subnet route, while the tailnet address works only while the tailnet
+      # does. On 2026-09-21 the phone's subscription pointed at the tailnet
+      # address and had been silently dead for days -- an alert path that
+      # fails in exactly the outage it exists to report.
+      - NTFY_BASE_URL=http://${HOMELAB_HOST:?set HOMELAB_HOST in .env}:2586
+      - NTFY_AUTH_FILE=/var/lib/ntfy/auth.db
+      # A LAN device must not read alerts or forge them.
+      - NTFY_AUTH_DEFAULT_ACCESS=deny-all
+      # The phone catches up after Doze or a spell off the tailnet.
+      - NTFY_CACHE_FILE=/var/lib/ntfy/cache.db
+      # The default is 12h even with a cache file. 72h covers a weekend.
+      - NTFY_CACHE_DURATION=72h
+      # At the default `info` level ntfy logs NO successful subscription and no
+      # per-request line -- only errors, and a daily stats line. On 2026-09-13
+      # that silence cost real time twice: an empty grep for the Home Assistant
+      # host was read as "HA has never subscribed" when it had simply connected
+      # quietly, and a grep for 403s could never have returned a positive
+      # whatever was happening. `subscribers=N` in the stats line was the only
+      # signal, and it lags by up to a minute.
+      #
+      # Changing this needs `docker compose up -d ntfy`, NOT `docker restart
+      # ntfy`: restart reuses the container's existing environment and silently
+      # keeps the old level. The startup line says which level is live --
+      # "log level is INFO" means the change did not apply.
+      - NTFY_LOG_LEVEL=debug
+      # NTFY_BEHIND_PROXY stays unset: nothing proxies this, on purpose.
+    ports:
+      # Published and used directly. An alert routed through a gated vhost is
+      # silenced by that vhost's own outage -- see the ntfy spec.
+      - "${PORT:-2586}:80"
+    # `edge` so Kuma and n8n reach it as http://ntfy:80. A container cannot
+    # reach the host's tailnet address; see stacks/uptime-kuma/README.md.
+    networks:
+      - default
+      - edge
+    volumes:
+      # PRECIOUS: auth.db holds the users and tokens.
+      - data:/var/lib/ntfy
+    labels:
+      homepage.group: Ops
+      homepage.name: ntfy
+      homepage.description: Every homelab alert on its way to the phone
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-2586}
+      homepage.icon: ntfy
+      # SQLite, both files.
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      # The image ships wget and not curl; checked 2026-09-11.
+      test: ["CMD-SHELL", "wget -q -O- http://localhost/v1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  data:
+
+networks:
+  edge:
+    external: true

@@ -1,0 +1,37 @@
+# OliveTin actions. Bind-mounted :ro -- edit here, in git, not in the
+# container.
+#
+# Each action is an explicitly whitelisted command. OliveTin is not a shell:
+# anything not listed here cannot be run through it. Keep it that way --
+# an action taking free-text arguments is a remote shell with extra steps.
+
+listenAddressSingleHTTPFrontend: 0.0.0.0:1337
+logLevel: "INFO"
+
+actions:
+  - title: Ping a host
+    shell: ping -c 3 {{ host }}
+    icon: ping
+    timeout: 15
+    arguments:
+      - name: host
+        title: Host
+        type: ascii
+        default: 1.1.1.1
+        # `type` is the safety boundary. `ascii` rejects the shell
+        # metacharacters that would turn this into command injection.
+
+  - title: Show disk usage
+    shell: df -h
+    icon: '&#128190;'
+    timeout: 10
+
+  - title: Show uptime
+    shell: uptime
+    icon: '&#9201;'
+    timeout: 10
+
+# Actions worth adding once this runs on the server -- restarting a specific
+# stack, clearing a download queue, forcing a library rescan. Each needs the
+# Docker socket or an SSH key mounted in, so add them deliberately, one at a
+# time, and never with a free-text container name as an argument.

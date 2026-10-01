@@ -1,0 +1,21 @@
+# Monthly SMART heartbeat for pve's physical disks. Replaces homelab-smart in
+# VM 101, whose virtio disk has no SMART data. Installed by hand on pve with
+# smart-report.sh and notify.py in /usr/local/lib/homelab/scripts; see
+# docs/smart.md.
+[Unit]
+Description=Monthly SMART heartbeat for pve's disks
+Documentation=file:/usr/local/lib/homelab/scripts/smart-report.sh
+
+[Service]
+Type=oneshot
+# The same credentials smartd's alert path uses on this host.
+Environment=HOMELAB_NOTIFY_ENV=/etc/homelab/ntfy.env
+# Exit 2 = a disk could not be read: "not checked" is worth a journal line and
+# the "incomplete" notification the script already sent, not a failed unit.
+SuccessExitStatus=2
+TimeoutStartSec=300
+# By-id, not sdX: adding the mirror disk on 2026-09-25 moved the old tank disk
+# from sda to sdb, and the report quietly followed the wrong disk.
+ExecStart=/usr/local/lib/homelab/scripts/smart-report.sh \
+    /dev/disk/by-id/ata-ST6000NE000-2KR101_WSD0TWDV \
+    /dev/disk/by-id/nvme-SAMSUNG_MZVKW1T0HMLH-000H1_S34DNX0K901441

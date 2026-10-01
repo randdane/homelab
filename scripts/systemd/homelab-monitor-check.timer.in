@@ -1,0 +1,21 @@
+[Unit]
+Description=Check the Uptime Kuma monitors hourly
+
+[Timer]
+# Hourly, to match the SUSPECT_AFTER_HOURS=1 threshold in the script: a
+# monitor red for an hour with green siblings should be reported in about an
+# hour, not the next day. The real incident ran eleven hours.
+OnCalendar=hourly
+# Deliberately offset from :00. The nightly backup stops and restarts every
+# container, and a probe landing inside that window reports a false failure
+# about a container that is merely being backed up.
+RandomizedDelaySec=20m
+# The server is always on, but this must not stampede at boot alongside every
+# stack starting; give docker time to bring Kuma up.
+OnBootSec=15min
+# No Persistent=: a missed hourly slot fires within a minute of boot, which
+# defeats OnBootSec and probes guests still starting (2026-09-30: Jellyfin's
+# CT was not up yet and this paged). A live check has nothing to catch up on.
+
+[Install]
+WantedBy=timers.target

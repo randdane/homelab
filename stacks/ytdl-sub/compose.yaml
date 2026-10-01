@@ -1,0 +1,66 @@
+name: ytdl-sub
+
+x-homelab:
+  lifecycle: developing
+  host: always-on
+  # Headless: no web UI and no published port. It only makes outbound
+  # requests to YouTube.
+  exposure: internal
+  # The videos are replaceable while they are still on YouTube, and only the
+  # last two months are kept anyway ("Only Recent" in subscriptions.yaml).
+  data: replaceable
+  purpose: Downloads recent videos from followed YouTube channels into Jellyfin
+  prerequisites: tank/media/youtube shared into VM 101 over virtiofs at /mnt/youtube (README)
+  description: ytdl-sub, headless, on a cron schedule
+
+services:
+  ytdl-sub:
+    # Headless image: Alpine plus cron. The -gui image adds a code-server
+    # editor on :8443, which would need Authentik in front of it; the config
+    # lives in this repo instead.
+    image: ghcr.io/jmbannon/ytdl-sub:2026.08.26.post1
+    container_name: ytdl-sub
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # Once a day. More often buys nothing for these channels and invites
+      # YouTube's throttling.
+      - CRON_SCHEDULE=${CRON_SCHEDULE:-0 4 * * *}
+      # The image copies its placeholder to $CRON_SCRIPT only when nothing is
+      # there; pointing it at the repo's file skips that. The chmod/chown the
+      # entrypoint then tries on it fail on the read-only mount, harmlessly:
+      # the wrapper sources the file rather than executing it.
+      - CRON_SCRIPT=/ytdl/cron.sh
+      # YouTube breaks yt-dlp every few weeks; a restart picks up the fix
+      # without waiting for a new ytdl-sub image.
+      - UPDATE_YT_DLP_ON_START=stable
+    volumes:
+      - ./config:/ytdl:ro
+      # Site data -- the channel list -- from the SITE_DIR checkout, as a
+      # directory (a single-file bind pins the inode; see headscale). Long
+      # syntax so a missing checkout stops the container instead of mounting
+      # an empty directory.
+      - type: bind
+        source: ${SITE_DIR:?set SITE_DIR in .env -- the site-data checkout}/stacks/ytdl-sub/site
+        target: /ytdl-site
+        read_only: true
+        bind:
+          create_host_path: false
+      # Crontab, the cron log and the wrapper script. Regenerated at start.
+      - state:/config
+      # tank/media/youtube on pve, over virtiofs (README). No create_host_path:
+      # a missing directory should stop the stack, not become an empty one on
+      # the VM's 64 GB disk. An unmounted-but-present mountpoint is caught by
+      # the check in config/cron.sh.
+      - type: bind
+        source: /mnt/youtube
+        target: /tv_shows
+        bind:
+          create_host_path: false
+
+volumes:
+  state:
+    labels:
+      homelab.backup: exclude  # regenerated at every start; nothing to keep

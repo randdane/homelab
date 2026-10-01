@@ -1,0 +1,16 @@
+[Unit]
+Description=Check the DERP address daily
+
+[Timer]
+# Daily is ample: this guards a residential IP, which changes on the order of
+# months. The failure it catches is dormant until someone needs the DNS-less
+# fallback path, so detecting it within a day is plenty.
+OnCalendar=daily
+# OnBootSec, not Persistent=: a missed slot fired within a minute of boot and
+# probed guests still starting (2026-09-30, a false page after pve was off
+# overnight). A boot run 15 min in covers the lost slot without that race.
+OnBootSec=15min
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target

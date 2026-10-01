@@ -1,0 +1,98 @@
+name: immich
+
+# Adapted from the upstream release compose:
+# https://github.com/immich-app/immich/releases/latest/download/docker-compose.yml
+# The legacy definition was a single immich-server container with no database,
+# no Redis, no machine-learning service and no volumes -- it could never have
+# started. Do not "simplify" this back down.
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: precious
+  purpose: Photo and video library -- the replacement for a phone camera roll
+  prerequisites: DB_PASSWORD in .env; the database image must match the vector extension Immich expects
+  description: Server, machine-learning, Valkey, and a Postgres built with vectorchord
+
+services:
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v3.1.0}
+    container_name: immich-server
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - DB_HOSTNAME=database
+      - DB_USERNAME=${DB_USERNAME:-immich}
+      - DB_DATABASE_NAME=${DB_DATABASE_NAME:-immich}
+      - DB_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in .env}
+      - REDIS_HOSTNAME=redis
+    ports:
+      - "${PORT:-2283}:2283"
+    volumes:
+      - upload:/data
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      - redis
+      - database
+    labels:
+      homepage.group: Files
+      homepage.name: Immich
+      homepage.description: Photos and videos, with search and face recognition
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-2283}
+      homepage.icon: immich
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      disable: false
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v3.1.0}
+    container_name: immich-machine-learning
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - model-cache:/cache
+    healthcheck:
+      disable: false
+
+  redis:
+    image: valkey/valkey:9
+    container_name: immich-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  database:
+    # Not an ordinary Postgres. Immich needs the vectorchord extension for
+    # search and face recognition, and the tag encodes the extension version.
+    # Substituting stock postgres gives a server that starts and then fails
+    # every search.
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
+    container_name: immich-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USERNAME:-immich}
+      - POSTGRES_DB=${DB_DATABASE_NAME:-immich}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in .env}
+      - POSTGRES_INITDB_ARGS=--data-checksums
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    shm_size: 128mb
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      disable: false
+
+volumes:
+  # The photo library itself. On the server this should become a bind mount
+  # to real storage -- see README.
+  upload:
+  db-data:
+  model-cache:
+    labels:
+      # Downloaded CLIP/face models, re-fetched automatically. Several GB.
+      homelab.backup: exclude

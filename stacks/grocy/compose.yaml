@@ -1,0 +1,36 @@
+name: grocy
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: precious
+  purpose: Tracks what food is in the house, what it cost, and when it expires
+  prerequisites: none
+  description: ERP for the fridge; complements Mealie rather than overlapping it
+
+services:
+  grocy:
+    image: linuxserver/grocy:4.6.0
+    container_name: grocy
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    ports:
+      - "${PORT:-8092}:80"
+    volumes:
+      - config:/config
+    labels:
+      homepage.group: Home
+      homepage.name: Grocy
+      homepage.description: Stock, chores, and what expires this week
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-8092}
+      homepage.icon: grocy
+      docker-volume-backup.stop-during-backup: "true"
+
+volumes:
+  # SQLite: stock, purchase history, chores, and barcodes. Entered by hand
+  # over months, which is exactly what makes it painful to lose.
+  config:

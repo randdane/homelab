@@ -1,0 +1,141 @@
+name: crowdsec
+
+# The agent half of CrowdSec: it reads logs and decides which IPs are hostile.
+#
+# The *bouncer* half -- what enforces those decisions -- is not here. It is
+# compiled into Caddy (stacks/caddy/Dockerfile) and applied per-vhost in
+# stacks/caddy/config/Caddyfile, so enforcement covers HTTP through the proxy
+# and nothing else. That is the whole surface this agent observes.
+#
+# This ran detect-only from 2026-08-24 to 2026-08-31 before enforcement was
+# switched on, which is what made it safe: 76 alerts across 34 distinct IPs,
+# every one a datacenter or scanner ASN, and not a single residential address.
+# The failure mode of a bouncer is locking out family, and the only way to
+# know whether a scenario fires on your own traffic is to watch it not fire.
+
+x-homelab:
+  lifecycle: production
+  host: always-on
+  exposure: lan  # udp 4242 on the LAN address, for the Jellyfin LXC only ($SITE_DIR/pve/firewall/101.fw)
+  data: replaceable
+  purpose: Watches the internet-facing logs and names the IPs worth blocking
+  prerequisites: caddy on the same host (its container logs); the Jellyfin LXC's rsyslog forwarding to udp 4242 on this host
+  description: Agent + local API; the bouncer is compiled into Caddy and enforces per-vhost
+
+services:
+  crowdsec:
+    image: crowdsecurity/crowdsec:v1.7.8
+    container_name: crowdsec
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      # Installed at first start and kept updated by the entrypoint.
+      #
+      # crowdsecurity/caddy parses Caddy's JSON access log, which is the
+      # format the `log` directive already emits -- no Caddyfile change.
+      #
+      # LePresidente/jellyfin is third-party (jellyfin-logs parser +
+      # jellyfin-bf scenario). CrowdSec ships no first-party Jellyfin
+      # support; this is the one the hub carries. Read what it matches
+      # before trusting it to block.
+      #
+      # whitelist-good-actors keeps verified search-engine crawlers out of
+      # the decisions list. Without it the first thing a bouncer blocks is
+      # Googlebot.
+      - COLLECTIONS=crowdsecurity/caddy crowdsecurity/http-cve crowdsecurity/base-http-scenarios crowdsecurity/whitelist-good-actors LePresidente/jellyfin
+      # Registers with the Central API to pull the community blocklist: IPs
+      # that attacked other people's hosts, known before they reach this one.
+      # It also shares this host's own alert *signals* (IP, scenario,
+      # timestamp) -- not log contents. Set to true to opt out entirely.
+      - DISABLE_ONLINE_API=${DISABLE_ONLINE_API:-false}
+    volumes:
+      # A DIRECTORY mount, not a file. Single-file bind mounts are pinned to
+      # the inode they had at container start, and `git pull` replaces files
+      # by rename -- the container would keep reading the old acquisition
+      # config forever. See docs/lessons-learned.md §18.
+      # Already a directory mount, and deliberately scoped to acquis.d rather
+      # than /etc/crowdsec. Do NOT widen it: /etc/crowdsec is runtime state --
+      # hub/, parsers/, collections/, and both *_api_credentials.yaml are
+      # generated there. Mounting the repo over it read-only would erase the
+      # hub and the LAPI credentials. Verified 2026-09-03.
+      - ./config/acquis.d:/etc/crowdsec/acquis.d:ro
+      # Local scenarios, kept in this repo rather than installed from the hub.
+      #
+      # Mounted at a SUBDIRECTORY of scenarios/, not at scenarios/ itself:
+      # the hub's own scenario files live in the `config` volume at that
+      # path, and a bind mount over the directory would hide every one of
+      # them. CrowdSec walks the tree, so a subdirectory is picked up
+      # normally. Directory mount for the usual reason -- see §18.
+      - ./config/scenarios:/etc/crowdsec/scenarios/local:ro
+      # Hub content and the machine's own credentials.
+      - config:/etc/crowdsec
+      # The decisions and alerts database.
+      - data:/var/lib/crowdsec/data
+    # One published port: Jellyfin's log lines, over syslog from its LXC
+    # (acquis.d/docker.yaml). LAN address only, and $SITE_DIR/pve/firewall/101.fw admits
+    # only the Jellyfin LXC to it. The local API still listens on 8080 inside the
+    # container only; cscli is reached with `docker exec crowdsec cscli ...`.
+    ports:
+      - "${HOMELAB_HOST:?set HOMELAB_HOST in .env}:4242:4242/udp"
+    #
+    # `edge` is joined so the bouncer can reach the LAPI at
+    # http://crowdsec:8080 by container name. The bouncer is compiled into
+    # Caddy (stacks/caddy/Dockerfile), and Caddy lives on `edge` -- so it is
+    # the agent that moves to the bouncer's network, not the reverse. The
+    # port is still not published to the host.
+    networks:
+      - default
+      - edge
+    healthcheck:
+      # `cscli lapi status` proves the agent can authenticate to its own
+      # local API -- the failure that actually happens after a bad upgrade or
+      # a lost credentials file. A running process proves nothing.
+      test: ["CMD", "cscli", "lapi", "status"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  socket-proxy:
+    # `:ro` on the docker socket restricts the FILE, not the Docker API --
+    # a container holding it can still create a privileged container that
+    # bind-mounts /, which is host root. This proxy is what actually
+    # restricts it. See docs/lessons-learned.md §27.
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    container_name: crowdsec-socket-proxy
+    restart: unless-stopped
+    environment:
+      # The setting that makes this read-only.
+      - POST=0
+      # Measured 2026-09-03: container list, inspect, logs, info.
+      - CONTAINERS=1
+      - INFO=1
+      # Explicitly denied. Each of these grants host takeover on its own,
+      # and some have GET forms that POST=0 would not stop.
+      - EXEC=0
+      - SECRETS=0
+      - CONFIGS=0
+      - SWARM=0
+      - NODES=0
+      - PLUGINS=0
+      - SYSTEM=0
+      - AUTH=0
+      - BUILD=0
+      - COMMIT=0
+      - DISTRIBUTION=0
+      - SESSION=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # No ports: reachable only from inside this stack's network.
+    networks:
+      - default
+
+volumes:
+  config:
+  data:
+
+networks:
+  # Shared with Caddy, which carries the bouncer. Created out-of-band:
+  #   see docs/host-setup.md 11 (it needs an explicit subnet)
+  edge:
+    external: true

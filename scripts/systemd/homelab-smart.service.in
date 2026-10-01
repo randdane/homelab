@@ -1,0 +1,19 @@
+# Template. Do NOT symlink this file into systemd -- it is not a valid unit
+# until scripts/install-systemd.sh substitutes the @PLACEHOLDERS@.
+[Unit]
+Description=Monthly SMART heartbeat for the disk everything lives on
+
+OnFailure=homelab-failure-notify@%n.service
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+@USERLINES@
+Environment=PATH=@PATH@
+Environment=HOME=@HOME@
+# smart-report.sh exits 2 when it cannot read SMART at all -- no smartctl, no
+# NOPASSWD rule, a disk that does not answer. That is "not checked", which is
+# worth a journal line and not worth a page. Only exit 1, a drive that says it
+# is failing, marks the unit failed.
+SuccessExitStatus=2
+TimeoutStartSec=300
+ExecStart=@REPO@/scripts/smart-report.sh

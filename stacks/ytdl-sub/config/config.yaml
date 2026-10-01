@@ -1,0 +1,10 @@
+configuration:
+  # On the same filesystem as the output, so finished files are renamed into
+  # place rather than copied across virtiofs.
+  working_directory: /tv_shows/.ytdl-sub-working-directory
+
+presets:
+  # Applied to every subscription through __preset__ in subscriptions.yaml.
+  homelab:
+    overrides:
+      tv_show_directory: /tv_shows

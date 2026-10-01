@@ -1,0 +1,19 @@
+[Unit]
+Description=Send the homelab digest every morning
+
+[Timer]
+# After the 04:00 boot catch-ups, the 06:00 vhost check (up to 06:30 with its
+# spread) and the phone's 07:00 push, so the digest reports this morning.
+# No RandomizedDelaySec: the phone's deadline is 09:00 and the margin is the
+# point of the fixed time. The zone is pinned explicitly -- America/Chicago,
+# the same zone digest.py's TZ uses for its date -- so the fire time does not
+# follow the first server's host timezone if that is ever changed.
+OnCalendar=*-*-* 07:15 America/Chicago
+Persistent=true
+# Persistent=true means a boot after 07:15 fires the digest within seconds,
+# while containers and Kuma monitors are still starting -- so that morning's
+# digest can list transient problems. That is honest rather than wrong, and
+# unlike status.py there is no retry here.
+
+[Install]
+WantedBy=timers.target

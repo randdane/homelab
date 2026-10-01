@@ -1,0 +1,43 @@
+name: navidrome
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: precious
+  purpose: Music streaming -- Jellyfin handles a music library badly
+  prerequisites: Music library mounted at /music
+  description: Subsonic-compatible, so any Subsonic client app works
+
+services:
+  navidrome:
+    image: deluan/navidrome:0.63.2
+    container_name: navidrome
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - ND_SCANSCHEDULE=${ND_SCANSCHEDULE:-@every 24h}
+    ports:
+      - "${PORT:-4533}:4533"
+    volumes:
+      - data:/data
+      - music:/music:ro
+    labels:
+      homepage.group: Media
+      homepage.name: Navidrome
+      homepage.description: Music library, streamable to any Subsonic client
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-4533}
+      homepage.icon: navidrome
+      docker-volume-backup.stop-during-backup: "true"
+    # No healthcheck: the image ships neither curl nor wget, and a healthcheck
+    # calling a missing binary reports unhealthy forever -- worse than none.
+
+volumes:
+  # Play counts, ratings, playlists, and users. Small, and not regenerable
+  # by rescanning -- this is the part worth archiving.
+  data:
+  music:
+    labels:
+      # A music library is too large for a nightly tarball, and on the server
+      # this becomes a :ro bind mount to files that live outside this stack.
+      homelab.backup: exclude

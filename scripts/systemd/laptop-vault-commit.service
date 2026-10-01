@@ -1,0 +1,16 @@
+# Weekly Obsidian vault commit + push to Forgejo. A user unit on the laptop, where
+# the vault lives; installed by hand like laptop-lan-route.service:
+#
+#   cp scripts/systemd/laptop-vault-commit.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now laptop-vault-commit.timer
+#
+# No OnFailure=: the laptop's homelab-failure-notify has no ntfy credentials,
+# so it would fail silently. The healthchecks.io check `vault-commit` is the
+# alert instead -- the script pings only after a successful push.
+[Unit]
+Description=Weekly Obsidian vault commit and push to Forgejo
+
+[Service]
+Type=oneshot
+TimeoutStartSec=300
+ExecStart=%h/Projects/_personal/homelab/scripts/vault-commit.sh

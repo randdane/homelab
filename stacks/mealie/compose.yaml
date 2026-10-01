@@ -1,0 +1,77 @@
+name: mealie
+
+x-homelab:
+  lifecycle: production
+  host: always-on
+  exposure: lan
+  data: precious
+  purpose: Recipes, imported from URLs, plus meal planning and a shopping list
+  prerequisites: PUBLIC_DOMAIN in .env
+  description: SQLite-backed; recipes and images live in one volume
+
+services:
+  mealie:
+    image: ghcr.io/mealie-recipes/mealie:v3.22.0
+    container_name: mealie
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1000M
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # Was `true` in the legacy file: anyone reaching the port could create
+      # an account. Turn on only long enough to create yours.
+      - ALLOW_SIGNUP=${ALLOW_SIGNUP:-false}
+      - MAX_WORKERS=1
+      - WEB_CONCURRENCY=1
+      # The vhost. Was `https://localhost:9925` in the legacy file, which
+      # breaks generated links and image URLs. Override in .env to test on
+      # the laptop.
+      - BASE_URL=${BASE_URL:-https://mealie.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}}
+      # SSO through Authentik. Off unless .env turns it on, so the laptop
+      # runs without a client. Only members of mealie-users may sign in;
+      # mealie-admins are made admin on every login. Password login stays
+      # as break-glass (no auto-redirect) for when Authentik is down.
+      # The backend fetches this URL itself from its `edge` address, which
+      # only works because of @authentik_oidc_internal in the Caddyfile.
+      - OIDC_AUTH_ENABLED=${OIDC_AUTH_ENABLED:-false}
+      - OIDC_CONFIGURATION_URL=https://authentik.${PUBLIC_DOMAIN}/application/o/mealie/.well-known/openid-configuration
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - OIDC_PROVIDER_NAME=Authentik
+      - OIDC_USER_GROUP=mealie-users
+      - OIDC_ADMIN_GROUP=mealie-admins
+      # Authentik's managed email mapping hard-codes email_verified: False,
+      # so Mealie's default check refuses every login ("Invalid
+      # Credentials"). Safe to skip here: accounts exist only because an
+      # admin made them, and only mealie-users gets past Authentik's binding.
+      - OIDC_REQUIRES_EMAIL_VERIFICATION=false
+    ports:
+      - "${PORT:-9925}:9000"
+    volumes:
+      - data:/app/data/
+    # Joins `edge` so Caddy can reach it by container name for the
+    # mealie.<PUBLIC_DOMAIN> vhost.
+    networks:
+      - default
+      - edge
+    labels:
+      homepage.group: Home
+      homepage.name: Mealie
+      homepage.description: Recipes, meal plans, and the shopping list
+      homepage.href: https://mealie.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      homepage.icon: mealie
+      docker-volume-backup.stop-during-backup: "true"
+    # No healthcheck block: the image already ships one.
+
+networks:
+  edge:
+    external: true
+
+volumes:
+  # Recipes, uploaded images, and the SQLite database. Recipes imported from
+  # sites that later go down exist only here.
+  data:

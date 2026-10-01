@@ -1,0 +1,63 @@
+# Keep tailnet-range source addresses off Docker's LOCAL-source masquerade.
+#
+# Runs on whichever host holds the tailnet identity -- VM 101 `homelab` since
+# the 2026-09-20 cutover.
+#
+# Template. Installed by `sudo scripts/install-systemd.sh --system` only,
+# which also copies tailnet-source-rule.sh to /usr/local/sbin. It needs root
+# to touch iptables. It was a hand-install until 2026-09-25, and was
+# forgotten twice -- once on the first server, once at the Proxmox cutover --
+# which is why it is not one any more.
+#
+# It must sit above BOTH of these, and which one bites depends on the source:
+#
+#     -A POSTROUTING -j ts-postrouting        (Tailscale, mark 0x40000)
+#     -A POSTROUTING -o br-<edge> -m addrtype --src-type LOCAL -j MASQUERADE
+#
+#   source                                rewritten by
+#   ------------------------------------  ------------------------------
+#   this host probing its own tailnet IP  Docker's LOCAL-source masquerade
+#   a remote client reaching a vhost      ts-postrouting
+#
+# The second row is the one that bites on VM 101, because it is both the
+# subnet router and the host serving the vhosts: a packet to its LAN address
+# arrives over tailscale0 with the subnet-route mark, is DNATed to the
+# container, and is then masqueraded on its way out of the bridge.
+#
+# An earlier version of this comment said the ts-postrouting ordering did not
+# matter, citing a measurement of the exemption working below the jump. That
+# measurement probed from the laptop at home, where an ip rule keeps 192.168.1.0/24
+# off the tunnel -- so it tested a path that never carried the mark. Measured
+# 2026-09-22 from a foreign network: below the jump, the rule matched ZERO
+# packets and all four gated vhosts returned 000.
+#
+# `tailscale set --snat-subnet-routes=false` was considered and rejected. It
+# would break every other host reached through the subnet route -- other LAN
+# servers, Home Assistant and Pi-hole would receive packets sourced from 100.64.0.0/10
+# with no route back, since their gateway is the router. That reasoning stands
+# regardless of the correction above.
+#
+# The 2026-09-09 outage that prompted all this was the same failure, and is
+# no longer unexplained. $SITE_DIR/docs/devices.md carries the mechanism.
+#
+# PartOf both tailscaled and docker: each rebuilds the nat table on restart
+# and neither preserves a foreign rule.
+
+[Unit]
+Description=Exempt tailnet-range sources from Docker's LOCAL-source masquerade
+After=tailscaled.service docker.service
+PartOf=tailscaled.service docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# iptables only; anything slower than this is a wedged xtables lock.
+TimeoutStartSec=60
+# Installed to /usr/local/sbin rather than run from /opt/homelab: this starts
+# at boot, and a root unit whose ExecStart lives in a git checkout breaks the
+# moment that checkout is moved, renamed or mid-rebase.
+ExecStart=/usr/local/sbin/tailnet-source-rule.sh
+ExecStop=-/usr/sbin/iptables -t nat -D POSTROUTING -s 100.64.0.0/10 -d 10.201.0.0/16 -j ACCEPT
+
+[Install]
+WantedBy=multi-user.target tailscaled.service docker.service

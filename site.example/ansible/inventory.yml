@@ -1,0 +1,23 @@
+# Hosts the playbooks drive. Copy to $SITE_DIR/ansible/inventory.yml.
+all:
+  children:
+    proxmox:
+      hosts:
+        pve:
+          ansible_host: 10.0.0.10
+          ansible_user: root
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+    docker_vms:
+      hosts:
+        homelab:
+          ansible_host: 10.0.0.11
+          ansible_user: admin
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          vmid: 101
+          vm_cores: 4
+          vm_memory: 12288
+          vm_disk: 64G
+          homelab_host: homelab
+  vars:
+    homelab_repo: git@github.com:example/homelab.git
+    ansible_ssh_common_args: -o IdentitiesOnly=yes

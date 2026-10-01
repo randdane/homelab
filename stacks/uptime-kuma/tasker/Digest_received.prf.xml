@@ -1,0 +1,48 @@
+<TaskerData sr="" dvi="1" tv="6.6.20">
+	<Profile sr="prof901" ve="2">
+		<cdate>1789061503587</cdate>
+		<edate>1789061503587</edate>
+		<flags>8</flags>
+		<id>901</id>
+		<mid0>911</mid0>
+		<nme>Digest received</nme>
+		<Event sr="con0" ve="2">
+			<code>461</code>
+			<pri>0</pri>
+			<App sr="arg0">
+				<appClass>io.heckel.ntfy.ui.MainActivity</appClass>
+				<appPkg>io.heckel.ntfy</appPkg>
+				<label>ntfy</label>
+			</App>
+			<Str sr="arg1" ve="3" />
+			<Str sr="arg2" ve="3" />
+			<Str sr="arg3" ve="3" />
+			<Str sr="arg4" ve="3" />
+			<Str sr="arg5" ve="3" />
+			<Str sr="arg6" ve="3" />
+		</Event>
+	</Profile>
+	<Task sr="task911">
+		<cdate>1789061503587</cdate>
+		<edate>1789061503587</edate>
+		<id>911</id>
+		<nme>Digest record</nme>
+		<pri>100</pri>
+		<Action sr="act0" ve="7">
+			<code>129</code>
+			<Str sr="arg0" ve="3">function pad(n) { return ('0' + n).slice(-2); }
+var d = new Date();
+var today = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+// Only this notification's own title, %evtprm2. Not %NTITLE, which is the
+// last notification shown rather than the one that fired this profile, and
+// not the body, where a failure alert could quote a digest title.
+// A failure alert, or yesterday's digest arriving late, must not count.
+var m = /^homelab digest (\d{4}-\d{2}-\d{2}): /.exec(String(local('evtprm2') || ''));
+if (m &amp;&amp; m[1] === today) { setGlobal('DigestDate', today); }
+</Str>
+			<Str sr="arg1" ve="3" />
+			<Int sr="arg2" val="1" />
+			<Int sr="arg3" val="45" />
+		</Action>
+	</Task>
+</TaskerData>

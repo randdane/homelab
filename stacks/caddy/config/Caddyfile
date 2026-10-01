@@ -1,0 +1,336 @@
+# Caddy configuration. Bind-mounted :ro -- edit here, not in the container.
+#
+# Caddy issues and renews TLS certificates automatically for any site
+# address that is a real hostname it can prove control of. `http://` or
+# `localhost` disables that, which is what makes this usable on the laptop.
+#
+# This is NOT a list of public sites. It is the list of names this host answers
+# to, and most of them are internal -- gated by a `remote_ip` allowlist ANDed
+# with the host match, not by being unreachable. Three names are public:
+# the duckdns control plane and the two jellyfin ones.
+#
+# The distinction matters when adding a block. Caddy's :80 and :443 are already
+# internet-facing, so a new vhost is reachable from outside by anyone sending
+# the matching Host header. It is public by default; the allowlist is what
+# makes it not.
+#
+# Upstreams live in other compose projects, reachable by container name
+# because both ends join the external `edge` network. See the README.
+
+# CrowdSec enforcement. The agent (stacks/crowdsec) reads this container's
+# JSON access log, decides which IPs are hostile, and records a decision;
+# this block is what finally acts on those decisions. Requires the custom
+# image built from stacks/caddy/Dockerfile -- the stock caddy image does not
+# have the `crowdsec` module and will fail to parse this file.
+#
+# `order crowdsec first` is required. The directive is a plugin, so Caddy has
+# no built-in position for it, and without this the config does not compile.
+# It must run before anything else in the chain: a banned IP should be
+# dropped before it reaches auth, rate limits, or an upstream.
+{
+	order crowdsec first
+	crowdsec {
+		api_url http://crowdsec:8080
+		api_key {env.CROWDSEC_API_KEY}
+	}
+}
+
+# Authentik forward-auth, for admin UIs with no SSO of their own (homepage,
+# kuma, dozzle, cup, duplicati). Imported INSIDE a handle, after its
+# remote_ip gate, so it adds a login and removes nothing. One Authentik proxy provider,
+# `admin-uis`, in forward_domain mode: its cookie is on the parent domain, so
+# one sign-in covers every host that imports this. Access is the Authentik
+# group `admin-uis`.
+#
+# The first line serves Authentik's own callback/sign-out paths on the app's
+# host; without it the post-login redirect lands on the app and 404s. If
+# Authentik is down these vhosts are down too: use the published ports or
+# the ssh tunnels each stack's README gives.
+(authentik_forward_auth) {
+	reverse_proxy /outpost.goauthentik.io/* authentik-server:9000
+	forward_auth authentik-server:9000 {
+		uri /outpost.goauthentik.io/auth/caddy
+		copy_headers X-Authentik-Username X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid
+		trusted_proxies private_ranges
+	}
+}
+
+# The headscale control plane. This hostname is baked into every enrolled
+# node's --login-server URL, so it must not change.
+#
+# `/derp` is the embedded DERP relay: a long-lived, bidirectional HTTP
+# stream. Caddy passes WebSocket upgrades through and does not buffer
+# streaming responses, so it needs no special handling -- but a degraded
+# DERP looks exactly like a healthy one, so verify it rather than assume.
+#
+# Deliberately NOT behind `crowdsec`. This vhost is the tailnet control plane
+# and the DERP relay, which is the remote-access path to this host. A false
+# positive here does not cost a video stream, it costs the ability to log in
+# and fix the false positive. Enforcement is applied where a bad decision is
+# recoverable; add it here only after the bouncer has a track record, and
+# never without LAN access to fall back on.
+{$SITE_ADDRESS} {
+	log
+	reverse_proxy headscale:8080
+}
+
+# Jellyfin, for family outside the house. Authentication is authentik over
+# LDAP (see stacks/authentik/provision_jellyfin_ldap.py) -- NOT forward_auth,
+# which native TV clients cannot complete.
+#
+# This publishes Jellyfin's entire HTTP API to the internet. authentik gates
+# who gets a token; it does not gate what is reachable. Keeping Jellyfin
+# patched is not optional while this vhost exists.
+#
+# Jellyfin runs in its own LXC on pve ({$JELLYFIN_HOST}), not in Docker (see
+# stacks/jellyfin/README.md), so Caddy reaches it by address, across pve's
+# bridge. It trusts X-Forwarded-For only from KnownProxies, which must be
+# this host's LAN address in its network.xml. If that drifts,
+# every remote client looks like caddy and per-IP lockout stops working --
+# silently. It must be <string> children, not raw text: the raw form parses as
+# an empty list and disables proxy trust with no warning.
+# jellyfin.<PUBLIC_DOMAIN> is NOT here -- it moved into the wildcard block
+# below on 2026-09-03 so it is served by the wildcard certificate instead of a
+# per-name one. It is a CNAME to the duckdns name, so the dynamic-IP
+# tracking the duckdns container already does still covers it; there is no
+# second updater to keep in sync.
+#
+# The duckdns name stays here and keeps its own certificate, because it is a
+# duckdns subdomain and the wildcard does not cover it. Existing clients that
+# were set up against this name keep working.
+jellyfin.{$DUCKDNS_HOST} {
+	crowdsec
+	log
+	reverse_proxy {$JELLYFIN_HOST}:8096
+}
+
+# The *.<PUBLIC_DOMAIN> wildcard, issued over DNS-01, and the internal names it
+# serves.
+#
+# A wildcard certificate names no subdomains, so nothing here appears in
+# Certificate Transparency -- see docs/lessons-learned.md 19. Issuing
+# vikunja.<PUBLIC_DOMAIN> its own certificate over HTTP-01 would publish that
+# name within seconds, and "vikunja." tells a scanner exactly which CVE list
+# to work through. This block is the whole reason the porkbun DNS module is
+# compiled into the image.
+#
+# DNS-01 is also the only challenge that can work here at all: these names
+# resolve to a private LAN address, so Let's Encrypt cannot reach
+# them to complete an HTTP-01 challenge. Proving control of the zone sidesteps
+# reachability entirely.
+#
+# A wildcard site address matches any single-label subdomain, and every
+# name under the domain is now served from here -- jellyfin included, as of
+# 2026-09-03. Caddy would still prefer a more specific block if one existed,
+# which is how jellyfin.<PUBLIC_DOMAIN> used to get its own certificate.
+*.{$PUBLIC_DOMAIN} {
+	tls {
+		dns porkbun {
+			api_key {env.PORKBUN_API_KEY}
+			api_secret_key {env.PORKBUN_API_SECRET_KEY}
+		}
+	}
+
+	# Jellyfin, for family outside the house. Deliberately NOT behind an
+	# allowlist -- this one is meant to be public, which is exactly why it
+	# keeps `crowdsec`. Dropping that directive while moving the name in here
+	# would have quietly removed the only active defence from the single most
+	# exposed vhost on this host.
+	#
+	# Being served by the wildcard changes nothing about its exposure. It was
+	# already public and already in Certificate Transparency from its 08-24
+	# per-name certificate; this only stops issuing a second one.
+	@jellyfin host jellyfin.{$PUBLIC_DOMAIN}
+	handle @jellyfin {
+		crowdsec
+		reverse_proxy {$JELLYFIN_HOST}:8096
+	}
+
+	# The `remote_ip` line below is repeated verbatim by every internal vhost
+	# in this block. That duplication is a decision, not an oversight: Caddy
+	# can DRY it with an `import` snippet, but only by substituting
+	# {args[0]} into a MATCHER NAME, which is unreadable at 3am during the
+	# outage you would be reading it during. Six explicit copies are worth
+	# more than one clever one. Ten now, with duplicati; revisit at eleven -- a
+	# security control that is copy-pasted is a security control that drifts.
+	#
+	# Both conditions, ANDed: the right name AND a caller that belongs here.
+	# The name is public -- anyone can resolve it, and anyone can send it as a
+	# Host header to this host's public address -- so the name alone is not a
+	# control. The address is.
+	#
+	# This allowlist is only trustworthy since 2026-09-03, when
+	# "userland-proxy": false stopped docker-proxy rewriting every request
+	# arriving over tailscale0 to the bridge gateway 10.201.7.1. Before that
+	# it rejected the entire tailnet.
+	#
+	# {$LAN_CIDR} is this site's LAN, from the repo-wide .env. Unset, it
+	# expands to nothing and the gate admits the tailnet only -- fails closed.
+	@vikunja {
+		host vikunja.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @vikunja {
+		reverse_proxy life-queue-app:3456
+	}
+
+	# Authentik. Was auth.{$DUCKDNS_HOST}, public and behind `crowdsec`, until
+	# 2026-09-05. Nothing needed it public: family logins reach authentik over
+	# LDAP, container-to-container on `edge` (see the jellyfin note above), so
+	# no browser is ever redirected here from outside. Forward-auth and OIDC do
+	# redirect the browser -- which is the reason this name has to be reachable
+	# from wherever the user sits, and the reason an internal-only name is
+	# enough while every protected app is internal too. Publishing it again is
+	# a DNS record and one provider's issuer URL, if that ever changes.
+	#
+	# `authentik.` in a public certificate would name the product to a scanner,
+	# so it is deliberately covered by the wildcard -- docs/lessons-learned.md
+	# 19. The allowlist, not the name, is the control.
+	#
+	# Deliberately NOT behind `crowdsec`, for the reason the headscale block
+	# gives: a false positive against the identity provider costs the ability
+	# to log in and fix the false positive.
+	#
+	# Still published on homelab's 127.0.0.1:9000 as an escape hatch -- if Caddy
+	# is broken, the admin UI is reachable over an ssh tunnel:
+	#   ssh -fN -L 9000:127.0.0.1:9000 <user>@<host>
+	@authentik {
+		host authentik.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @authentik {
+		reverse_proxy authentik-server:9000
+	}
+
+	# OIDC clients on `edge` (Mealie first) fetch discovery, token, userinfo
+	# and jwks from their own backend, arriving from their container address,
+	# which the allowlist above refuses. Admitted here for /application/o/*
+	# only -- not the admin UI or the login flows.
+	#
+	# The gateway is excluded on purpose. SNAT'd traffic arrives as
+	# 10.201.7.1 (devices.md, "docker-proxy was rewriting the source
+	# address"), and admitting it would admit whatever got rewritten --
+	# which is why widening to the whole bridge was rejected before. If
+	# `edge` is ever recreated on a different subnet, both lines change.
+	@authentik_oidc_internal {
+		host authentik.{$PUBLIC_DOMAIN}
+		path /application/o/*
+		remote_ip 10.201.7.0/24
+		not remote_ip 10.201.7.1
+	}
+	handle @authentik_oidc_internal {
+		reverse_proxy authentik-server:9000
+	}
+
+	# Homepage, the dashboard. Internal by definition -- it lists what exists
+	# here, which is precisely what should not be readable from outside.
+	#
+	# Port 3001 on the host stays published as the break-glass path, the same
+	# arrangement vikunja has with 3456.
+	@homepage {
+		host homepage.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @homepage {
+		route {
+			import authentik_forward_auth
+			reverse_proxy homepage:3000
+		}
+	}
+
+	# Uptime Kuma, the thing that tells you the rest of this file is broken.
+	#
+	# Its published port 3004 stays, and that is not redundancy for its own
+	# sake: if Caddy is down, this vhost is down, and the monitor that would
+	# have reported it is unreachable through exactly the component that
+	# failed. Same argument as authentik's 127.0.0.1:9000 escape hatch.
+	@kuma {
+		host kuma.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @kuma {
+		route {
+			import authentik_forward_auth
+			reverse_proxy uptime-kuma:3001
+		}
+	}
+
+	# Dozzle and Cup: admin UIs with no login. Their host ports are bound to
+	# 127.0.0.1, so this gate is the only way in from another machine, and
+	# they sit on the `admin` network rather than `edge` so no public-facing
+	# container can bypass it. Dozzle streams every container's logs, which
+	# can carry secrets -- it is the reason this exists.
+	@dozzle {
+		host dozzle.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @dozzle {
+		route {
+			import authentik_forward_auth
+			reverse_proxy dozzle:8080
+		}
+	}
+
+	@cup {
+		host cup.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @cup {
+		route {
+			import authentik_forward_auth
+			reverse_proxy cup:8000
+		}
+	}
+
+	# Duplicati: can read the B2 credentials and restore or delete any backup,
+	# which is why it was loopback-only until 2026-09-29. Three layers now:
+	# this gate, Authentik forward-auth, and its own password. On `admin`,
+	# like the two above.
+	@duplicati {
+		host duplicati.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @duplicati {
+		route {
+			import authentik_forward_auth
+			reverse_proxy duplicati:8200
+		}
+	}
+
+	# Karakeep, the bookmark archiver. Internal: it holds a copy of everything
+	# saved to it. Its published port 3006 stays as the break-glass path.
+	@karakeep {
+		host karakeep.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @karakeep {
+		reverse_proxy karakeep:3000
+	}
+
+	@mealie {
+		host mealie.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @mealie {
+		reverse_proxy mealie:9000
+	}
+
+	# Forgejo's web UI and HTTPS git. Its published port 3002 stays: existing
+	# remotes use it, and it is the break-glass path when Caddy is down.
+	# SSH git (3003) never passes through here.
+	@forgejo {
+		host forgejo.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @forgejo {
+		reverse_proxy forgejo:3000
+	}
+
+	# Everything else -- a wrong subdomain, or the right one from the wrong
+	# address -- gets the connection closed rather than a 403 that would
+	# confirm which names exist here.
+	handle {
+		abort
+	}
+	log
+}

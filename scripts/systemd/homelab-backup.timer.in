@@ -1,0 +1,15 @@
+[Unit]
+Description=Run the nightly backup chain
+
+[Timer]
+OnCalendar=03:00
+# The whole point. The first server is a laptop and is often powered off at 03:00 --
+# container cron simply lost those runs and reported nothing. Persistent
+# makes a missed run fire after the next boot instead.
+Persistent=true
+# Spread the load a little, but stay well clear of the hour so a boot-time
+# catch-up is not delayed further.
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

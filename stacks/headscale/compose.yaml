@@ -1,0 +1,95 @@
+name: headscale
+
+x-homelab:
+  lifecycle: production
+  host: always-on
+  exposure: internet
+  data: precious
+  purpose: Self-hosted Tailscale control plane — the tailnet every other remote-access path depends on
+  prerequisites: HEADSCALE_SERVER_URL in the repo-wide .env (server_url is not in config.yaml); public DNS name pointed at the house (duckdns), ports 80+443/tcp + 3478/udp forwarded to the server, stacks/caddy running, and the `edge` network created
+  description: Control plane and embedded DERP relay for the personal tailnet
+
+services:
+  headscale:
+    image: headscale/headscale:v0.29.3
+    container_name: headscale
+    restart: unless-stopped
+    command: serve
+    # server_url lives here, not in config/config.yaml -- see the note at the
+    # top of that file. `required: false` for the same reason as caddy's: a
+    # missing root .env must not make this stack unrenderable, because every
+    # tooling script reads stacks through `docker compose config`.
+    #
+    # Only HEADSCALE_* names reach headscale's config loader, which maps them
+    # onto config keys, so be careful adding anything with that prefix to the
+    # shared file -- a name meant for Compose to interpolate would be read as
+    # a config key instead once it landed in the container. This used to cite
+    # HEADSCALE_PORT as the example; that variable is gone, since Caddy now
+    # fronts the control plane and this stack publishes no HTTP port.
+    env_file:
+      - path: ../../.env
+        required: false
+    ports:
+      # No 443 here. Caddy owns 80/443 and reverse-proxies the control plane
+      # (and the embedded DERP relay at /derp) to listen_addr below. The
+      # public URL is unchanged, so enrolled nodes do not re-authenticate.
+      #
+      # STUN stays published directly: it is UDP, Caddy does not proxy it,
+      # and it is genuinely needed — without it peers that cannot reach each
+      # other directly relay every packet through DERP.
+      - "${STUN_PORT:-3478}:3478/udp"
+    networks:
+      - edge
+    volumes:
+      # The DIRECTORY, not the files inside it. A single-file bind mount pins
+      # an inode, and `git pull` replaces a file by rename -- so the container
+      # kept serving the old content while a reload reported success. See
+      # docs/lessons-learned.md 18, which this stack hit through config.yaml.
+      #
+      # ./config holds exactly config.yaml and dns/, and the headscale image
+      # ships nothing at /etc/headscale (verified 2026-09-03 by `docker cp`
+      # from the image), so this mount shadows nothing and is equivalent to
+      # the two mounts it replaces.
+      #
+      # dns/ was already a directory mount, which is why extra-records.json
+      # edits did propagate and config.yaml edits did not.
+      - ./config:/etc/headscale:ro
+      # Site data -- the policy and DNS records -- from the homelab-private
+      # checkout ($SITE_DIR/docs/superpowers/plans/2026-09-30-homelab-private.md). Also
+      # a directory, for the same reason as above. Long syntax for
+      # create_host_path: false -- the short form CREATES a missing source,
+      # so an uncloned or mistyped SITE_DIR would mount an empty directory.
+      # This way the container refuses to start instead.
+      - type: bind
+        source: ${SITE_DIR:?set SITE_DIR in .env -- the homelab-private checkout}/stacks/headscale/site
+        target: /etc/headscale-site
+        read_only: true
+        bind:
+          create_host_path: false
+      - data:/var/lib/headscale
+    labels:
+      # No homepage.* labels: headscale has no web UI to link to.
+      docker-volume-backup.stop-during-backup: "true"
+    # No healthcheck: headscale/headscale:v0.29.3 is distroless — no shell,
+    # no wget, no curl, so there is no binary to probe with. Verified:
+    #   docker run --rm --entrypoint sh headscale/headscale:v0.29.3 -c 'echo ok'
+    #   -> exec: "sh": executable file not found in $PATH
+
+volumes:
+  # PRECIOUS, and not merely "has state". This volume holds:
+  #   noise_private.key        — the control plane's identity
+  #   derp_server_private.key  — the embedded relay's identity
+  #   db.sqlite                — every node, user, route and pre-auth key
+  #   cache/                   — the Let's Encrypt certificate and account key
+  #
+  # Lose the keys or the database and every device must re-authenticate by
+  # hand. Lose the ACME cache and re-issuance runs into Let's Encrypt's
+  # duplicate-certificate limit (5 per week), which is not a thing you can
+  # wait out during an outage.
+  data:
+
+networks:
+  # Shared with stacks/caddy so it can reach this container by name.
+  # Created out-of-band:  see docs/host-setup.md 11 (it needs an explicit subnet)
+  edge:
+    external: true

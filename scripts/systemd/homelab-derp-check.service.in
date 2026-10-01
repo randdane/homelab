@@ -1,0 +1,28 @@
+# Template. Do NOT symlink this file into systemd — it is not a valid unit
+# until scripts/install-systemd.sh substitutes the @PLACEHOLDERS@. Same
+# reasoning as homelab-status.service.in: the repo lives at two paths and
+# WorkingDirectory= does not expand environment variables.
+[Unit]
+Description=Check headscale's DERP address, control plane, and that peers connect directly
+Documentation=file:@REPO@/stacks/headscale/README.md
+
+# A failed unit is otherwise silent: systemd marks it failed and
+# nothing tells anyone. %n expands to this unit's own name.
+OnFailure=homelab-failure-notify@%n.service
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+@USERLINES@
+# systemd services do not source .bashrc, so uv (typically installed to
+# ~/.local/bin) is not on PATH unless listed explicitly here.
+Environment=PATH=@PATH@
+Environment=HOME=@HOME@
+# check_derp.py exits 2 when it cannot reach the internet to learn the public
+# IP. That is "not checked", not "drift" — and on a laptop that is asleep or
+# on a captive network it would otherwise fail daily and train you to ignore
+# this unit. Only exit 1, real drift, marks the unit failed.
+SuccessExitStatus=2
+# A hung command must fail the unit, or OnFailure never fires. Real runs take
+# under 1 s. See scripts/test_unit_timeouts.py.
+TimeoutStartSec=300
+ExecStart=@UV@ run scripts/check_derp.py

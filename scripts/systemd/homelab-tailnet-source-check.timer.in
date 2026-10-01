@@ -1,0 +1,15 @@
+[Unit]
+Description=Re-assert the tailnet source exemption every 15 minutes
+
+[Timer]
+# 15 min is the exposure window for every remote_ip-gated vhost. The previous
+# detector was the phone's 07:00 probe, so the alternative is up to 24h.
+OnBootSec=15min
+OnUnitActiveSec=15min
+# No Persistent=: there is nothing to catch up on. The rule's correctness is
+# a property of the running kernel, not of runs that were missed, and the
+# sibling unit already asserts it at boot.
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

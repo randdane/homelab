@@ -1,0 +1,14 @@
+# Dead-man's switch for pve: ping healthchecks.io, whose silence is the alarm.
+# Runs on the Proxmox host itself, not in VM 101, so a dead VM does not mask a
+# live host and a dead host is reported by the absence of this ping.
+# Installed by hand on pve; see $SITE_DIR/docs/out-of-band-access.md §4.
+[Unit]
+Description=Heartbeat to healthchecks.io (pve dead-man's switch)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# HC_URL=https://hc-ping.com/<ping-key>/pve-heartbeat -- root-only, not in git
+EnvironmentFile=/etc/homelab/heartbeat.env
+ExecStart=/usr/bin/curl -fsS -m 10 --retry 3 -o /dev/null ${HC_URL}

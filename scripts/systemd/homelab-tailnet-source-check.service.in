@@ -1,0 +1,48 @@
+# Re-assert the tailnet source exemption's position in nat POSTROUTING.
+#
+# Fired by homelab-tailnet-source-check.timer every 15 minutes. It runs the same
+# script as homelab-tailnet-source.service, which is idempotent -- it deletes
+# and re-inserts the rule at position 1, then asserts the ordering.
+#
+# WHY THIS IS A SECOND UNIT rather than a timer pointed at the first one.
+# homelab-tailnet-source.service is `RemainAfterExit=yes`, so it stays active
+# after it finishes, and `systemctl start` on an already-active unit is a
+# NO-OP. Measured 2026-09-22: a plain `start` left the journal untouched --
+# no new invocation, no ExecStart, and a success exit. A timer wired to that
+# unit would have fired on schedule, reported nothing wrong, and re-asserted
+# nothing, which is the same shape as the bug it exists to catch.
+#
+# So this unit is deliberately NOT RemainAfterExit, and deliberately has NO
+# ExecStop -- the sibling's ExecStop deletes the rule, and with
+# RemainAfterExit=no that would fire the instant ExecStart returned, removing
+# the rule it had just placed.
+#
+# WHAT IT IS FOR. On 2026-09-22 the exemption was found at POSTROUTING
+# position 2, below the jump to ts-postrouting, with a packet counter of zero.
+# Every remote_ip-gated vhost had been unreachable from the tailnet for at
+# least seven days. The sibling unit is PartOf tailscaled and docker, so it
+# re-asserts when either restarts -- but Tailscale re-inserts its own jump at
+# other times too, and nothing was re-running the check to find out.
+#
+# See scripts/tailnet-source-rule.sh and docs/lessons-learned.md.
+
+[Unit]
+Description=Re-assert the tailnet source exemption's position in nat POSTROUTING
+After=tailscaled.service docker.service
+# Not PartOf: the sibling owns the rule's lifecycle. This only re-places it.
+# The script exits non-zero when the ordering cannot be made correct, which is
+# a real outage of every gated vhost -- alert on it like any other unit.
+#
+# Deliberately not rate-limited. A persistent failure alerts every 15 minutes,
+# which is noisy, and this repo's own lesson is that a noisy check gets muted.
+# Accepted anyway: the script re-inserts at position 1 on every run, so a
+# repeating failure means something is actively re-ordering the chain faster
+# than we can correct it. That is worth being woken for, and it has never
+# happened. Revisit if it ever does -- and suppress it properly rather than
+# muting the notification.
+OnFailure=homelab-failure-notify@%n.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=60
+ExecStart=/usr/local/sbin/tailnet-source-rule.sh

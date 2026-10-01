@@ -1,0 +1,89 @@
+name: myfin
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: precious
+  purpose: Budgeting and account balances -- where the money actually went
+  prerequisites: MYSQL_ROOT_PASSWORD and DB_PW in .env
+  description: Separate API and frontend containers; the frontend calls the API from your browser
+
+services:
+  db:
+    image: mysql:8.4
+    container_name: myfin-db
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      - MYSQL_DATABASE=${DB_NAME:-myfin}
+      - MYSQL_USER=${DB_USER:-myfin}
+      - MYSQL_PASSWORD=${DB_PW:?set DB_PW in .env}
+    volumes:
+      - db-data:/var/lib/mysql
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  myfin-api:
+    image: ghcr.io/afaneca/myfin-api:5.2.1
+    container_name: myfin-api
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - DB_NAME=${DB_NAME:-myfin}
+      - DB_USER=${DB_USER:-myfin}
+      - DB_PW=${DB_PW:?set DB_PW in .env}
+      - DB_PORT=3306
+      - DB_HOST=db
+      - PORT=3001
+      - LOGGING=${LOGGING:-true}
+      - BYPASS_SESSION_CHECK=false
+      - ENABLE_USER_SIGNUP=${ENABLE_USER_SIGNUP:-false}
+      # Email is optional; leave the SMTP vars empty and password reset is
+      # simply unavailable. Never inline credentials here.
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-}
+      - SMTP_SECURE=${SMTP_SECURE:-}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+    ports:
+      # 8085, not 8081 -- the legacy file used 8081, which Vaultwarden has.
+      - "${API_PORT:-8085}:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  myfin-frontend:
+    image: ghcr.io/afaneca/myfin:10.3.0
+    container_name: myfin-frontend
+    restart: unless-stopped
+    environment:
+      # Resolved by the BROWSER, not by this container -- so it must be a URL
+      # reachable from wherever you open the page. `localhost` works only
+      # when browsing from this same machine; set it to the server's
+      # hostname before using MyFin from a phone.
+      - VITE_MYFIN_BASE_API_URL=${API_URL:-http://localhost:8085}
+    ports:
+      # 8086, not 8080 -- IT-Tools has 8080.
+      - "${PORT:-8086}:80"
+    depends_on:
+      myfin-api:
+        condition: service_healthy
+    labels:
+      homepage.group: Finance
+      homepage.name: MyFin
+      homepage.description: Budget, accounts, and spending
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-8086}
+      homepage.icon: myfin
+
+volumes:
+  # Accounts, categories, and every transaction entered by hand.
+  db-data:

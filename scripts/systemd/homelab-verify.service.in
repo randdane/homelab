@@ -1,0 +1,22 @@
+# Template. Do NOT symlink this file into systemd -- it is not a valid unit
+# until scripts/install-systemd.sh substitutes the @PLACEHOLDERS@.
+[Unit]
+Description=Verify the offsite backup downloads, decrypts and hashes clean
+Documentation=file:@REPO@/docs/recovery.md
+
+OnFailure=homelab-failure-notify@%n.service
+
+# Duplicati must be up to be asked.
+After=docker.service
+Wants=docker.service
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+@USERLINES@
+Environment=PATH=@PATH@
+Environment=HOME=@HOME@
+# Measured at 7.5s against the real bucket on 2026-08-27, but the script waits
+# up to 5 minutes for Duplicati to answer after a boot, and a verify grows with
+# the archive. 30 minutes is slack, not an expectation.
+TimeoutStartSec=1800
+ExecStart=@REPO@/scripts/run_backups.sh --verify

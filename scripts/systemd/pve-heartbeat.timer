@@ -1,0 +1,12 @@
+# Must match the check's cron schedule on healthchecks.io: 0 5-20 * * *,
+# America/Chicago (pve's own timezone). No pings expected overnight, so an
+# outage after 20:00 is reported at ~05:30 rather than waking anyone.
+[Unit]
+Description=Hourly pve heartbeat, 05:00-20:00
+
+[Timer]
+OnCalendar=*-*-* 05..20:00:00
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

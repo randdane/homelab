@@ -1,0 +1,128 @@
+name: homepage
+
+# The visibility layer. Discovers other stacks over the Docker socket and
+# renders their homepage.* labels, so every stack documents itself and a
+# stopped stack simply disappears.
+
+x-homelab:
+  lifecycle: production
+  purpose: The dashboard -- so a running stack cannot be forgotten
+  host: both
+  # `lan`, not `internal`: port 3001 is published on every interface, and
+  # deliberately so -- it is the break-glass path for when Caddy, which serves
+  # the homepage.<PUBLIC_DOMAIN> vhost, is the thing that is broken. exposure
+  # records what can reach this, not how sensitive it is. The dashboard lists
+  # what runs here, which is worth keeping off the internet; that argues for
+  # the Caddy allowlist in front of it, not for understating the open port.
+  exposure: lan
+  data: replaceable
+  prerequisites: Docker socket, behind this stack's read-only socket proxy
+
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:v2.1.2
+    container_name: homepage
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      # Required since v1.0 -- without it every request 400s with a
+      # "host validation failed" page and the dashboard looks broken.
+      # Homepage rejects any Host it was not told about, so the Caddy vhost
+      # name must be in this list too -- otherwise the proxied name 400s with
+      # a "host validation failed" page that reads as a proxy fault rather
+      # than a config one. Set it in this stack's .env; the domain is not
+      # written into git. See .env.example.
+      # Composed here rather than pasted whole into .env, so the two values
+      # that vary by host are each guarded. Pasted whole, the shipped example
+      # contained the literal placeholders `<SERVER_IP>` and `<PUBLIC_DOMAIN>`
+      # inside an otherwise valid-looking comma-separated list -- a copy that
+      # was never edited started cleanly and 400'd only on the names that
+      # mattered.
+      #
+      # HOMELAB_HOST, and NOT a second name for the same address. It briefly
+      # had one, `SERVER_IP`, which was this repo's 34th stack .env asking for
+      # a value the other 33 already call HOMELAB_HOST. Two names for one
+      # address is two things to keep in step and no way to notice when they
+      # drift apart.
+      #
+      # `:?` here while every homepage.href writes `${HOMELAB_HOST:-localhost}`
+      # -- deliberately different, because the consequence is different. An
+      # href falling back to localhost renders a dead link, which is wrong but
+      # harmless on a laptop with no .env, and check.sh must keep rendering
+      # there. This value going missing makes the dashboard answer 400 to its
+      # own address, so it fails at deploy instead.
+      - HOMEPAGE_ALLOWED_HOSTS=localhost:3001,127.0.0.1:3001,${HOMELAB_HOST:?set HOMELAB_HOST in this stack's .env -- this host's LAN address, e.g. my-server.local}:3001,homepage.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in this stack's .env -- see .env.example}
+    volumes:
+      # Mounted file-by-file, not as a directory. Homepage creates missing
+      # files in /app/config on boot; leaving the directory itself writable
+      # from the image layer lets it do that (kubernetes.yaml, logs/) while
+      # these five stay read-only. Verified: no errors, HTTP 200.
+      #
+      # The cost of that choice: single-file bind mounts are pinned to their
+      # inode, and `git pull` replaces files by rename. After pulling a config
+      # change here you MUST `docker compose up -d --force-recreate homepage`
+      # or the container keeps serving the old file. See
+      # docs/lessons-learned.md §18.
+      # These stay single-file mounts, and that is a known trade-off rather
+      # than an oversight -- see docs/lessons-learned.md 18. A directory mount
+      # of ./config over /app/config would shadow kubernetes.yaml and logs/,
+      # which homepage creates itself at runtime (verified 2026-09-03).
+      #
+      # The consequence to remember: editing any of these five and running
+      # `git pull` + restart changes NOTHING. Use
+      # `docker compose up -d --force-recreate homepage`.
+      - ./config/docker.yaml:/app/config/docker.yaml:ro
+      - ./config/settings.yaml:/app/config/settings.yaml:ro
+      - ./config/services.yaml:/app/config/services.yaml:ro
+      - ./config/widgets.yaml:/app/config/widgets.yaml:ro
+      - ./config/bookmarks.yaml:/app/config/bookmarks.yaml:ro
+    # `edge` is how Caddy reaches this container by name. The socket proxy
+    # stays off it -- only the thing being proxied needs to be reachable.
+    networks: [homepage, edge]
+    depends_on: [socket-proxy]
+
+  socket-proxy:
+    # `:ro` on the docker socket restricts the FILE, not the Docker API --
+    # a container holding it can still create a privileged container that
+    # bind-mounts /, which is host root. This proxy is what actually
+    # restricts it. See docs/lessons-learned.md §27.
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    container_name: homepage-socket-proxy
+    restart: unless-stopped
+    environment:
+      # The setting that makes this read-only.
+      - POST=0
+      # Measured 2026-09-03: container list, inspect, stats, events.
+      - CONTAINERS=1
+      - EVENTS=1
+      # Explicitly denied. Each of these grants host takeover on its own,
+      # and some have GET forms that POST=0 would not stop.
+      - EXEC=0
+      - SECRETS=0
+      - CONFIGS=0
+      - SWARM=0
+      - NODES=0
+      - PLUGINS=0
+      - SYSTEM=0
+      - AUTH=0
+      - BUILD=0
+      - COMMIT=0
+      - DISTRIBUTION=0
+      - SESSION=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # No ports: reachable only from inside this stack's network.
+    networks:
+      - homepage
+
+networks:
+  homepage:
+  # Shared with every vhost upstream, so Caddy reaches this container by
+  # name. Created out-of-band, NOT by the caddy stack -- it is
+  # `external: true` everywhere and needs an explicit subnet. See
+  # docs/host-setup.md 11; that step is easy to miss during a rebuild,
+  # when nothing that declares it will create it.
+  edge:
+    external: true

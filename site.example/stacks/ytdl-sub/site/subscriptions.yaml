@@ -1,0 +1,14 @@
+# One show per channel in Jellyfin, one season per year, episodes by date.
+# "Only Recent" downloads the last 2 months and deletes anything older, so
+# disk use stays bounded; tank is a single disk and none of this is backed up.
+# Max 1080p: 4K costs 3-4x the space for talking-head tech videos.
+#
+# Site data: lives in $SITE_DIR/stacks/ytdl-sub/site/. To add a channel: a
+# line below, commit and push the site repo, `git pull` it on the server. The
+# next 04:00 run picks it up; no restart needed.
+__preset__:
+  preset:
+    - homelab
+
+Jellyfin TV Show by Date | Only Recent | Max 1080p:
+  "Example Channel": "https://www.youtube.com/@example"

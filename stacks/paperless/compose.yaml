@@ -1,0 +1,123 @@
+name: paperless
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: lan
+  data: precious
+  purpose: Scanned documents, OCR'd and searchable -- the paper filing cabinet
+  prerequisites: PAPERLESS_DB_PASSWORD and PAPERLESS_SECRET_KEY in .env
+  description: paperless-ngx with Postgres, Redis, Tika and Gotenberg for Office documents
+
+services:
+  broker:
+    image: redis:7-alpine
+    container_name: paperless-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  db:
+    image: postgres:17-alpine
+    container_name: paperless-postgres
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - POSTGRES_DB=paperless
+      - POSTGRES_USER=paperless
+      - POSTGRES_PASSWORD=${PAPERLESS_DB_PASSWORD:?set PAPERLESS_DB_PASSWORD in .env}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "paperless", "-U", "paperless"]
+      interval: 10s
+      timeout: 45s
+      retries: 10
+
+  webserver:
+    image: ghcr.io/paperless-ngx/paperless-ngx:3.0.5
+    container_name: paperless
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+      gotenberg:
+        condition: service_started
+      tika:
+        condition: service_started
+    environment:
+      - PAPERLESS_TIME_ZONE=${TZ:-America/Chicago}
+      - PAPERLESS_REDIS=redis://broker:6379
+      - PAPERLESS_DBHOST=db
+      - PAPERLESS_DBUSER=paperless
+      - PAPERLESS_DBPASS=${PAPERLESS_DB_PASSWORD:?set PAPERLESS_DB_PASSWORD in .env}
+      # Django signs sessions with this. Changing it logs everyone out;
+      # leaving it at a default would let anyone forge a session cookie.
+      - PAPERLESS_SECRET_KEY=${PAPERLESS_SECRET_KEY:?set PAPERLESS_SECRET_KEY in .env}
+      - PAPERLESS_URL=${PAPERLESS_URL:-http://localhost:8000}
+      - PAPERLESS_OCR_LANGUAGE=${PAPERLESS_OCR_LANGUAGE:-eng}
+      - PAPERLESS_TIKA_ENABLED=1
+      - PAPERLESS_TIKA_GOTENBERG_ENDPOINT=http://gotenberg:3000
+      - PAPERLESS_TIKA_ENDPOINT=http://tika:9998
+      - USERMAP_UID=${PUID:-1000}
+      - USERMAP_GID=${PGID:-1000}
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - data:/usr/src/paperless/data
+      - media:/usr/src/paperless/media
+      - export:/usr/src/paperless/export
+      - consume:/usr/src/paperless/consume
+    labels:
+      homepage.group: Files
+      homepage.name: Paperless
+      homepage.description: Searchable archive of every scanned document
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-8000}
+      homepage.icon: paperless
+      docker-volume-backup.stop-during-backup: "true"
+    # No healthcheck block: the image already ships one.
+
+  gotenberg:
+    image: gotenberg/gotenberg:8.20
+    container_name: paperless-gotenberg
+    restart: unless-stopped
+    # Converts .eml files via headless Chromium. JavaScript off and the file
+    # allow-list narrowed, so a malicious document cannot phone home or read
+    # the rest of the container.
+    command:
+      - "gotenberg"
+      - "--chromium-disable-javascript=true"
+      - "--chromium-allow-list=file:///tmp/.*"
+
+  tika:
+    image: apache/tika:latest
+    container_name: paperless-tika
+    restart: unless-stopped
+
+volumes:
+  # The document originals and the search index. Losing these means
+  # re-scanning paper that may no longer exist.
+  data:
+  media:
+  pg-data:
+  redis-data:
+    labels:
+      # Just the task queue. Rebuilt on start.
+      homelab.backup: exclude
+  export:
+    labels:
+      # Manual export target -- written only when you ask for a dump.
+      homelab.backup: exclude
+  consume:
+    labels:
+      # Inbox. Files here are deleted as soon as they are ingested.
+      homelab.backup: exclude

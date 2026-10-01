@@ -1,0 +1,75 @@
+# Runs scripts/check.sh, which is the same command used locally. Anything
+# worth enforcing goes in that script, not here.
+#
+# Green CI and a green laptop are NOT automatically the same thing, and the
+# difference is deliberate: the runner has no `.env`, so anything that reads
+# real configuration is inert here unless it is supplied below. When adding a
+# check that needs a value, either give it one here or accept that CI does not
+# cover it -- and say which, rather than leaving a scan that quietly skips.
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    # Dependabot PRs do NOT read the Actions secret store. GitHub withholds
+    # it from a Dependabot-triggered `pull_request` run on purpose: the bot
+    # can write to the branch, so a compromised upstream would otherwise be
+    # able to exfiltrate them. Such a run sees only
+    # Settings > Secrets and variables > Dependabot, which is a SEPARATE
+    # store, so the same four values are duplicated there. Set them with
+    #     gh secret set PUBLIC_DOMAIN --app dependabot
+    # The guard below is what makes this visible rather than silent: a
+    # Dependabot PR with that store empty fails on it, which is the correct
+    # outcome and not a bug to route around.
+
+    env:
+      # The repo-wide identities, from repository secrets. They are not
+      # credentials, but secrets rather than variables so that a scan
+      # failure prints `***` instead of publishing the hostname in a build
+      # log -- the whole reason they are not committed. See
+      # docs/conventions.md. SITE_WORDS is the comma-separated content of
+      # the untracked `.site-words`. A pull request from a fork receives
+      # none of these, so they stay private in a public repository.
+      PUBLIC_DOMAIN: ${{ secrets.PUBLIC_DOMAIN }}
+      DUCKDNS_HOST: ${{ secrets.DUCKDNS_HOST }}
+      HEADSCALE_SERVER_URL: ${{ secrets.HEADSCALE_SERVER_URL }}
+      SITE_WORDS: ${{ secrets.SITE_WORDS }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # scripts/test_identity_leak.py SKIPS when it has no identity to search
+      # for, which is correct on a machine that has none and useless here: a
+      # skipped scan is a green run that checked nothing. Fail loudly instead,
+      # so the secrets going missing cannot quietly disarm it.
+      #
+      # A pull request from a fork legitimately has no secrets, so the guard
+      # does not run there and the scans skip: the tests still run, the
+      # owner's scans do not. A fork running its own pushes has nothing to
+      # leak either. Delete this step there -- deliberately, in the workflow,
+      # not by letting the scan rot into a skip.
+      - name: identity scan has something to scan for
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          missing=""
+          for v in PUBLIC_DOMAIN DUCKDNS_HOST HEADSCALE_SERVER_URL SITE_WORDS; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing"
+            echo "scripts/test_identity_leak.py would skip, and CI would be"
+            echo "green having scanned nothing. Add them under"
+            echo "Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      # The .env files are gitignored, so this runner has none. That is the
+      # point: check.sh renders declared defaults and stubs server-only
+      # secrets, so it must pass with no per-stack secrets present at all.
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - run: ./scripts/check.sh

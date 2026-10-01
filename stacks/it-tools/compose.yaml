@@ -1,0 +1,32 @@
+name: it-tools
+
+x-homelab:
+  lifecycle: planned
+  host: both
+  exposure: lan
+  data: none
+  purpose: Offline dev toolbox -- JSON, base64, JWT, hashes, cron, UUIDs
+  prerequisites: none
+  description: Stateless; nothing to back up and nothing to lose
+
+services:
+  it-tools:
+    image: corentinth/it-tools:latest
+    container_name: it-tools
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+    ports:
+      - "${PORT:-8080}:80"
+    labels:
+      homepage.group: Ops
+      homepage.name: IT-Tools
+      homepage.description: Encoders, converters, and generators, offline
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-8080}
+      homepage.icon: it-tools
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

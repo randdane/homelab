@@ -1,0 +1,60 @@
+# TEMPLATE. Rendered to custom.yaml beside it by scripts/render_derp_map.py,
+# which substitutes @DUCKDNS_HOST@ from the repo-wide .env. The rendered file
+# is gitignored: a deployment hostname must not be committed to a config file
+# (docs/conventions.md, scripts/test_identity_leak.py). That guard's docstring
+# warned nothing stopped "the eighth" config file from reintroducing one --
+# this file was the eighth, on 2026-09-22, and the guard caught it the same day.
+#
+# The full DERP map, written by hand so the embedded region can serve DERP
+# WITHOUT serving STUN. `automatically_add_embedded_derp_region` is false in
+# config.yaml precisely so region 999 below replaces the generated one.
+#
+# WHY. The embedded DERP sits on the same LAN as the nodes it measures, so it
+# answers "what is your public address" with a PRIVATE one -- the gateway via
+# the router's hairpin SNAT, or 10.201.7.1 from the docker bridge. That is the
+# address every peer then tries to hole-punch to, which is why nothing on this
+# tailnet has ever made a direct connection.
+#
+# Adding an external region alongside it is NOT enough: netcheck takes the
+# reflexive address from the nearest region, which is still the local one, and
+# then sees two disagreeing answers and reports MappingVariesByDestIP: true --
+# a false symmetric-NAT verdict that makes hole punching MORE conservative.
+# Measured 2026-09-22 on exactly that intermediate configuration.
+#
+# So region 999 keeps derpport 443 and sets `stunport: -1`, which disables
+# STUN on that node. Its latency is then measured over HTTPS
+# (/derp/latency-check, already visible in the logs) rather than STUN.
+#
+# Two external regions, not one, so MappingVariesByDestIP can be determined
+# from two CORRECT observations rather than left blank.
+#
+# stunonly: true means neither external node can ever be dialled as a relay;
+# avoid: true means neither region can be chosen as home. Nothing here becomes
+# a dependency of the data path -- if both are blocked (the work-wifi case
+# that derp.urls: [] exists for) we degrade to the old behaviour, not worse.
+regions:
+  999:
+    regionid: 999
+    regioncode: headscale
+    regionname: Headscale Embedded DERP
+    nodes:
+      # The relay. stunport -1 disables STUN on it, because its answer is a
+      # private address -- see the header above.
+      - name: "999"
+        regionid: 999
+        hostname: "@DUCKDNS_HOST@"
+        ipv4: @DERP_IPV4@
+        derpport: 443
+        stunport: -1
+      # The measuring stick, in the SAME region on purpose. A region with no
+      # STUN-capable node gets no latency measurement at all, and an
+      # unmeasurable region cannot be ranked -- measured 2026-09-22, when
+      # tailscale then chose a stunonly region as its home DERP despite
+      # avoid: true, leaving home pointing at something that cannot relay.
+      # Keeping an external stunonly node here makes region 999 measurable
+      # AND makes the reflexive address the true public one.
+      - name: 999stun
+        regionid: 999
+        hostname: stun.l.google.com
+        stunonly: true
+        stunport: 19302

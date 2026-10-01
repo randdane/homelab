@@ -1,0 +1,163 @@
+name: life-queue
+
+x-homelab:
+  lifecycle: production
+  host: always-on
+  exposure: lan
+  data: precious
+  purpose: Personal task manager for everything — the single queue, with reminders that reach the phone
+  # Self-contained on purpose: this file cannot cross-reference the design doc.
+  prerequisites: >-
+    N8N_ENCRYPTION_KEY must be set in .env BEFORE n8n's first start — n8n
+    encrypts stored credentials with it and changing it later orphans every
+    one irrecoverably. VIKUNJA_SERVICE_SECRET must also be set, or Vikunja
+    generates a random JWT secret per boot and logs everyone out on every
+    restart. Phone access is over the tailnet (headscale), so the control
+    plane must be healthy or reminders are laptop-only; the LAN address is
+    the break-glass path when it is not.
+  description: Vikunja for tasks, n8n for the reminder flow out through ntfy
+
+services:
+  vikunja:
+    image: vikunja/vikunja:2.5.0
+    container_name: life-queue-app
+    restart: unless-stopped
+    environment:
+      # Secrets and host-specific values only. Everything else is in
+      # config/config.yaml, which is committed and diffable. Env wins.
+      VIKUNJA_SERVICE_SECRET: ${VIKUNJA_SERVICE_SECRET:?set VIKUNJA_SERVICE_SECRET in .env}
+      # The config file's localhost default is wrong on a server: it is the
+      # base for links Vikunja hands out, so it must be the address the phone
+      # actually uses.
+      VIKUNJA_SERVICE_PUBLICURL: ${VIKUNJA_PUBLIC_URL:?set VIKUNJA_PUBLIC_URL in .env, e.g. http://my-server.local:3456/}
+      # SSO: the `authentik` provider in config/config.yaml. Env can only
+      # fill a provider the file already declares.
+      VIKUNJA_AUTH_OPENID_PROVIDERS_AUTHENTIK_AUTHURL: https://authentik.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in this stack's .env -- see .env.example}/application/o/vikunja/
+      VIKUNJA_AUTH_OPENID_PROVIDERS_AUTHENTIK_CLIENTID: ${VIKUNJA_OIDC_CLIENT_ID:-}
+      VIKUNJA_AUTH_OPENID_PROVIDERS_AUTHENTIK_CLIENTSECRET: ${VIKUNJA_OIDC_CLIENT_SECRET:-}
+    ports:
+      # Bound to all interfaces, unlike v1's 127.0.0.1: the phone reaches
+      # this over the tailnet, and the LAN address is the break-glass path
+      # when the control plane is down. Hence exposure: lan, not internal.
+      #
+      # Still published even though Caddy now fronts it at the vikunja
+      # vhost: this port IS the break-glass path when Caddy is down.
+      - "${VIKUNJA_PORT:-3456}:3456"
+    networks:
+      # `edge` is how Caddy reaches this by container name. Joining it does
+      # not expose anything by itself -- see the vhost in stacks/caddy, which
+      # gates on remote_ip.
+      - default
+      - edge
+    volumes:
+      # PRECIOUS. SQLite database *and* file attachments — config pins
+      # files.basepath under /db so one volume covers both. Backing up the
+      # database alone would silently lose every attachment.
+      - vikunja-data:/db
+      # The DIRECTORY, not the file -- see docs/lessons-learned.md 18. A
+      # single-file mount pins an inode and `git pull` replaces by rename, so
+      # config edits silently never reached the container. The vikunja image
+      # ships nothing at /etc/vikunja (verified 2026-09-03), so this shadows
+      # nothing.
+      - ./config:/etc/vikunja:ro
+    labels:
+      homepage.group: Personal
+      homepage.name: life-queue
+      homepage.description: Tasks, errands and projects — the one queue
+      # An absolute vhost URL, not ${HOMELAB_HOST}:<port>. The name is served
+      # by Caddy's wildcard, so this works over TLS from the tailnet and the
+      # LAN alike, and it does not go stale if the published port moves.
+      # ${PUBLIC_DOMAIN} must be set in THIS stack's .env -- Compose
+      # interpolates labels from the stack's own file and never from the
+      # repo-wide one, which is also why the domain is not written here.
+      #
+      # `:?` and not a bare ${PUBLIC_DOMAIN}: unset, the label rendered as the
+      # valid-looking `https://vikunja.` and the tile pointed at nothing.
+      # Failing to render is the loud version of that, and it fails on the
+      # host doing the deploy rather than in a browser days later.
+      homepage.href: https://vikunja.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in this stack's .env -- see .env.example}
+      homepage.icon: vikunja
+      docker-volume-backup.stop-during-backup: "true"
+    # No healthcheck: vikunja/vikunja:2.5.0 is distroless — no shell, no
+    # wget, no curl, so there is nothing to probe with. Verified:
+    #   docker run --rm --entrypoint sh vikunja/vikunja:2.5.0 -c 'echo ok'
+    #   -> exec: "sh": executable file not found in $PATH
+
+  n8n:
+    image: n8nio/n8n:2.35.5
+    container_name: life-queue-n8n
+    restart: unless-stopped
+    # The ntfy publisher credentials: NTFY_TOPIC and NTFY_TOKEN. One copy on
+    # disk, shared with scripts/notify.py. required: false so a checkout
+    # without it still renders -- see docs/conventions.md.
+    env_file:
+      - path: ../ntfy/.env
+        required: false
+    environment:
+      # MUST be set before the first start. See prerequisites above.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?set N8N_ENCRYPTION_KEY in .env BEFORE first run — changing it later orphans every stored credential}
+      # 5679 on the host so this never fights the separate homelab n8n stack
+      # (5678) if both ever land here. The container still listens on 5678.
+      N8N_WEBHOOK_URL: ${N8N_PUBLIC_URL:-http://localhost:5679/}
+      GENERIC_TIMEZONE: ${TZ:-America/Chicago}
+      TZ: ${TZ:-America/Chicago}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_SECURE_COOKIE: "false"
+      # n8n 2.x blocks $env access inside nodes by DEFAULT. Without this the
+      # reminder workflow dies with "access to env vars denied" and every
+      # {{$env.*}} reference is inert.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # Passed as environment rather than stored as n8n credentials, so every
+      # secret lives in .env instead of encrypted inside the n8n volume under
+      # a key that must never change.
+      VIKUNJA_INTERNAL_URL: http://vikunja:3456
+      # The address the PHONE uses, not the container one. It is the base
+      # for the deep link in each notification, so vikunja:3456 here would
+      # produce taps that go nowhere.
+      VIKUNJA_PUBLIC_URL: ${VIKUNJA_PUBLIC_URL:?set VIKUNJA_PUBLIC_URL in .env}
+      VIKUNJA_TOKEN: ${VIKUNJA_TOKEN:-}
+      # Overrides the env file's value, which is the host's loopback -- inside
+      # this container that address is n8n itself. environment wins over
+      # env_file.
+      NTFY_URL: http://ntfy:80
+    ports:
+      - "${N8N_PORT:-5679}:5678"
+    networks:
+      # default for vikunja:3456; edge for ntfy:80.
+      - default
+      - edge
+    volumes:
+      # PRECIOUS TOO. Reminder workflows and their execution history.
+      # Restoring Vikunja without this leaves the reminder half — the entire
+      # point of the project — gone.
+      - n8n-data:/home/node/.n8n
+    labels:
+      homepage.group: Personal
+      homepage.name: life-queue reminders
+      homepage.description: n8n flow that turns Vikunja reminders into phone notifications
+      homepage.href: http://${HOMELAB_HOST:-localhost}:${N8N_PORT:-5679}
+      homepage.icon: n8n
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      # 180s, not 30s. Measured on the first server: 64s to first healthy on a WARM start
+      # (page cache hot, straight after a daemon restart) and longer from cold
+      # -- this is a 5400rpm disk and n8n runs migrations before it listens.
+      # A start_period shorter than the real cold-boot time means the hourly
+      # status check can catch it mid-start and page about a service that is
+      # merely slow (2026-08-26). Generous here is close to free: start_period
+      # only suppresses *failures* from counting toward unhealthy; a container
+      # is marked healthy the moment a probe passes, however early that is.
+      start_period: 180s
+
+volumes:
+  vikunja-data:
+  n8n-data:
+
+networks:
+  # Shared with stacks/caddy. Created out-of-band:  see docs/host-setup.md 11 (it needs an explicit subnet)
+  edge:
+    external: true

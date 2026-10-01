@@ -1,0 +1,33 @@
+# Template. Do NOT symlink this file into systemd — it is not a valid unit
+# until scripts/install-systemd.sh substitutes the @PLACEHOLDERS@. Same
+# reasoning as homelab-status.service.in: the repo lives at two paths and
+# WorkingDirectory= does not expand environment variables.
+[Unit]
+Description=Check the remote_ip-gated vhosts are still gated and still refusing
+
+# A failed unit is otherwise silent: systemd marks it failed and nothing
+# tells anyone. %n expands to this unit's own name.
+OnFailure=homelab-failure-notify@%n.service
+
+# Caddy and uptime-kuma must be up to be asked.
+After=docker.service
+Wants=docker.service
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+@USERLINES@
+# systemd services do not source .bashrc, so uv (typically installed to
+# ~/.local/bin) is not on PATH unless listed explicitly here.
+Environment=PATH=@PATH@
+Environment=HOME=@HOME@
+# NOTE THE ABSENCE OF SuccessExitStatus=2, which homelab-monitor-check and
+# homelab-derp-check both set. They suppress exit 2 because a container
+# restarting during the backup window is routine and failing on it would train
+# the alert to be ignored. Here exit 2 means "could not determine whether the
+# private vhosts are still private", and at 06:00 -- clear of boot churn and
+# the backup window -- that is rare enough to be worth waking for. A journal
+# line saying "not passed" is not enough for an unattended daily check.
+# A hung command must fail the unit, or OnFailure never fires. Real runs take
+# about 2 s. See scripts/test_unit_timeouts.py.
+TimeoutStartSec=300
+ExecStart=@UV@ run scripts/check_vhosts.py

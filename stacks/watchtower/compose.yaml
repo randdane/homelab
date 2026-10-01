@@ -1,0 +1,49 @@
+name: watchtower
+
+# Scoped by label, deliberately. WATCHTOWER_LABEL_ENABLE means Watchtower
+# touches ONLY containers carrying
+#   com.centurylinklabs.watchtower.enable: "true"
+# and ignores everything else. The default -- updating everything it can see
+# -- would recreate databases unattended at 4am, and a stack that migrates
+# its schema on startup does not migrate back.
+#
+# Nothing in this repo opts in yet. Add the label to a stateless service
+# when you decide it should self-update; never to one holding data.
+
+x-homelab:
+  lifecycle: planned
+  host: server
+  exposure: internal
+  data: none
+  purpose: Auto-updates the handful of stateless stacks that opt in by label
+  prerequisites: none
+  description: Cup notifies about everything; this one only acts on opted-in containers
+
+services:
+  watchtower:
+    # The maintained fork. containrrr/watchtower's last release was 1.7.1 in
+    # 2023 -- three-year-old unpatched code is a poor choice for the one
+    # container that can restart every other one.
+    image: ghcr.io/nicholas-fedor/watchtower:1.20.3
+    container_name: watchtower
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      # The whole safety model. Without this, everything is in scope.
+      - WATCHTOWER_LABEL_ENABLE=true
+      # Remove the superseded image after a successful update, or the disk
+      # fills with old layers nobody will ever roll back to.
+      - WATCHTOWER_CLEANUP=true
+      # Wait for a container to stop rather than killing it mid-write.
+      - WATCHTOWER_TIMEOUT=60s
+      - WATCHTOWER_SCHEDULE=${WATCHTOWER_SCHEDULE:-0 0 4 * * *}
+      # Notifications are off. Cup already answers "what has an update", and
+      # the legacy definition carried a plaintext Gmail app password to do
+      # it. If you want alerts here, use a shoutrrr URL from .env -- never
+      # inline credentials.
+      - WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_NOTIFICATION_URL:-}
+    volumes:
+      # Read-write by necessity: pulling and recreating containers are write
+      # operations, so this cannot go through a read-only socket proxy the
+      # way dockge does. That is precisely why its scope is limited.
+      - /var/run/docker.sock:/var/run/docker.sock
