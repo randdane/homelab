@@ -4,10 +4,10 @@
 #   cp scripts/systemd/laptop-vault-commit.{service,timer} ~/.config/systemd/user/
 #   systemctl --user daemon-reload && systemctl --user enable --now laptop-vault-commit.timer
 #
-# No OnFailure=: the laptop's homelab-failure-notify has no ntfy credentials,
-# so it would fail silently. The healthchecks.io check `vault-commit` is the
-# alert instead -- the script pings it after a successful push, and pings
-# /fail itself when a run fails.
+# No OnFailure=: the script reports its own failures, with a /fail ping to the
+# healthchecks.io check `vault-commit` and an ntfy message read from the
+# laptop's stacks/ntfy/.env. The check still covers the week where the script
+# never ran at all, because the success ping goes missing.
 [Unit]
 Description=Weekly Obsidian vault commit and push to Forgejo
 

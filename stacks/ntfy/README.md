@@ -38,6 +38,10 @@ docker exec ntfy ntfy access phone   phone-forward  write-only
 docker exec ntfy ntfy token add homelab   # -> stacks/ntfy/.env NTFY_TOKEN, and Kuma
 docker exec ntfy ntfy token add hass      # -> HA's ntfy integration only
 docker exec ntfy ntfy token add phone     # -> ntfy app and Tasker only
+# Optional, one per extra machine that should alert: a labelled token for the
+# same write-only user, so it can be revoked alone. It goes in that machine's
+# own stacks/ntfy/.env, with NTFY_URL set to the server rather than 127.0.0.1.
+docker exec ntfy ntfy token add --label laptop homelab
 ```
 
 The access table is the audit. It must match this, exactly:

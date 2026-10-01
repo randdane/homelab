@@ -6,8 +6,9 @@
 # week where the script never ran at all -- laptop off -- still arrives as an
 # email from healthchecks.io rather than as silence.
 #
-# A run that fails says so at once, with a /fail ping, instead of waiting for
-# the check's period to lapse. And the push is retried: Persistent= fires the
+# A run that fails says so at once, with a /fail ping and an ntfy message to
+# the phone, instead of waiting for the check's period to lapse. And the push
+# is retried: Persistent= fires the
 # timer in the same second the laptop resumes, before the network is back, and
 # on 2026-09-27 that single attempt failed and left the commit stranded for a
 # week.
@@ -17,6 +18,10 @@ set -euo pipefail
 
 VAULT="${VAULT:-$HOME/Documents/Obsidian_vault}"
 KEY_FILE="${KEY_FILE:-${XDG_DATA_HOME:-$HOME/.local/share}/_r_/healthchecks/ping_key}"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# The laptop's own copy of the publisher credentials, same file as on the
+# server: NTFY_URL, NTFY_TOPIC, NTFY_TOKEN. See stacks/ntfy/README.md.
+NOTIFY_ENV="${HOMELAB_NOTIFY_ENV:-$REPO/stacks/ntfy/.env}"
 PUSH_ATTEMPTS="${PUSH_ATTEMPTS:-10}"
 PUSH_WAIT="${PUSH_WAIT:-60}"
 
@@ -35,6 +40,16 @@ report_failure() {
             echo "told healthchecks.io it failed"
         else
             echo "could not reach healthchecks.io either" >&2
+        fi
+        # And the phone, through ntfy, when this machine has a token for it.
+        # notify.py keeps trying for three minutes, then says it could not.
+        if [ -s "$NOTIFY_ENV" ]; then
+            HOMELAB_NOTIFY_ENV="$NOTIFY_ENV" python3 "$REPO/scripts/notify.py" \
+                --title "vault commit failed on $(hostname)" \
+                --message "vault-commit.sh exited $status. See: journalctl --user -u '*vault-commit*' -n 30" \
+                || echo "could not notify through ntfy" >&2
+        else
+            echo "no ntfy credentials at $NOTIFY_ENV, phone not notified" >&2
         fi
     fi
     exit "$status"
