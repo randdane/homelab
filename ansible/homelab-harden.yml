@@ -42,14 +42,23 @@
           changed_when: false
           check_mode: false # reads only, so a dry run tests the config too
       rescue:
-        - name: Drop-in removed, the config did not parse
+        # Only a drop-in this run just wrote can be the culprit. When it is
+        # unchanged, something else broke the config, and removing ours would
+        # weaken ssh without fixing anything. sshd_dropin is undefined if the
+        # copy itself failed.
+        - name: Drop-in removed, this run wrote it and the config did not parse
           ansible.builtin.file:
             path: /etc/ssh/sshd_config.d/10-homelab.conf
             state: absent
+          when: sshd_dropin is defined and sshd_dropin is changed
 
         - name: Stop before the reload
           ansible.builtin.fail:
-            msg: sshd -t rejected the config; the drop-in was removed and ssh was not reloaded.
+            msg: >-
+              sshd -t rejected the config; the drop-in was
+              {{ 'removed' if sshd_dropin is defined and sshd_dropin is changed
+              else 'left in place, it was not what changed' }}
+              and ssh was not reloaded.
 
     # Now, not at the end: a later task failing would drop the reload, and the
     # next run sees an unchanged drop-in and never reloads at all.

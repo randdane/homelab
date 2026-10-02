@@ -96,8 +96,8 @@ cleanup() {
     true' >/dev/null 2>&1
 }
 
-# An interrupted intrusive run can stop between a fault and its repair, and
-# SSH-6 leaves the drop-in removed by design. Converge again on the way out.
+# An interrupted intrusive run can stop between a fault and its repair.
+# Converge again on the way out.
 # Intrusive runs only: a read-only run places nothing, so it must remove nothing.
 finish() {
   if [ "$intrusive" = 1 ]; then
@@ -129,17 +129,22 @@ read_only() {
   out=$(on_target 'sudo sshd -T | grep "^permitrootlogin "')
   check SSH-3 "sshd's effective config forbids root login" "permitrootlogin no" "$out"
 
-  out=$(on_target 'systemctl is-active unattended-upgrades apt-daily.timer apt-daily-upgrade.timer; systemctl is-enabled apt-daily.timer apt-daily-upgrade.timer; grep -c "\"1\";" /etc/apt/apt.conf.d/20auto-upgrades' 2>&1 | tr '\n' ' ')
-  check UPD-1 "shutdown guard and timers active, timers enabled, both periodics on" "active active active enabled enabled 2 " "$out"
+  # apt-config reads the merged config, so a later apt.conf.d file that turns
+  # a periodic off is seen; reading 20auto-upgrades alone would not see it.
+  # shellcheck disable=SC2016  # $L$U must expand on the target, not here
+  out=$(on_target 'systemctl is-active unattended-upgrades apt-daily.timer apt-daily-upgrade.timer; systemctl is-enabled apt-daily.timer apt-daily-upgrade.timer; eval "$(apt-config shell U APT::Periodic::Unattended-Upgrade L APT::Periodic::Update-Package-Lists)"; echo "$L$U"' 2>&1 | tr '\n' ' ')
+  check UPD-1 "shutdown guard and timers active, timers enabled, both periodics on" "active active active enabled enabled 11 " "$out"
 
   out=$(on_target 'sudo unattended-upgrade --dry-run -d 2>&1 | grep "Allowed origins"')
   contains UPD-2 "the security archive is an allowed origin" "Debian-Security" "$out"
 
-  out=$(on_target 'grep -L "^0$" /proc/sys/net/ipv[46]/conf/*/accept_redirects' | tr '\n' ' ')
-  check NET-1 "no interface accepts ICMP redirects" "" "$out"
+  # grep -L exits 1 when it lists nothing, so END follows with `;`. A failed
+  # ssh also prints nothing: without END, an unreachable target would pass.
+  out=$(on_target 'grep -L "^0$" /proc/sys/net/ipv[46]/conf/*/accept_redirects; echo END' | tr '\n' ' ')
+  check NET-1 "no interface accepts ICMP redirects" "END " "$out"
 
-  out=$(on_target 'grep -L "^0$" /proc/sys/net/ipv4/conf/*/send_redirects' | tr '\n' ' ')
-  check NET-2 "no interface sends ICMP redirects" "" "$out"
+  out=$(on_target 'grep -L "^0$" /proc/sys/net/ipv4/conf/*/send_redirects; echo END' | tr '\n' ' ')
+  check NET-2 "no interface sends ICMP redirects" "END " "$out"
 
   out=$(on_target 'cat /proc/sys/net/ipv4/conf/all/rp_filter')
   check NET-3 "reverse-path filtering is loose" "2" "$out"
@@ -190,11 +195,10 @@ intrusive_checks() {
   contains SSH-6 "a config that does not parse fails the play" "rescued=1" "$out"
   check SSH-6 "it fails at the parse check" "TASK [Whole sshd config still parses]" "$(failed_task "$out")"
   out=$(on_target 'test -e /etc/ssh/sshd_config.d/10-homelab.conf && echo present || echo absent')
-  check SSH-6 "the drop-in was taken back out" "absent" "$out"
+  check SSH-6 "our unchanged drop-in was left in place" "present" "$out"
   out=$(on_target 'echo still-reachable' 2>&1)
   check SSH-6 "ssh still accepts logins" "still-reachable" "$out"
   cleanup
-  play >/dev/null # put the drop-in back for everything below
 
   on_target 'echo "net.ipv4.conf.all.rp_filter = 1" | sudo tee /etc/sysctl.d/99-claims-test.conf >/dev/null
     sudo sysctl --system >/dev/null 2>&1'
@@ -213,8 +217,8 @@ intrusive_checks() {
 
   on_target 'sudo docker network create claims-net >/dev/null'
   out=$(on_target 'ls -d /proc/sys/net/ipv4/conf/br-* >/dev/null 2>&1 || echo no-bridge-found
-    grep -L "^0$" /proc/sys/net/ipv[46]/conf/*/accept_redirects /proc/sys/net/ipv4/conf/*/send_redirects' | tr '\n' ' ')
-  check NET-4 "a bridge created after the run has the same settings" "" "$out"
+    grep -L "^0$" /proc/sys/net/ipv[46]/conf/*/accept_redirects /proc/sys/net/ipv4/conf/*/send_redirects; echo END' | tr '\n' ' ')
+  check NET-4 "a bridge created after the run has the same settings" "END " "$out"
 
   on_target 'sudo docker run -d --name claims-web -p 18080:80 nginx:alpine >/dev/null 2>&1; sleep 3'
   out=$(curl -s -o /dev/null -m 8 -w '%{http_code}' "http://$HOST:18080/")

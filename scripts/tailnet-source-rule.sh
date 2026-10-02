@@ -79,6 +79,19 @@ for _ in $(seq 30); do
     sleep "$POLL"
 done
 
+# Tailscale never installed its jump in the ~60 s waited (tailscaled active but
+# not Running, or stuck). Place the exemption anyway, then fail loudly: its jump
+# may still land above us later, and exiting 0 here is what hid it before. 60 s
+# of polling plus this is inside TimeoutStartSec=120, and no retry loop follows.
+if ts_jump_pending; then
+    iptables -t nat -D POSTROUTING "${RULE[@]}" 2>/dev/null || true
+    iptables -t nat -I POSTROUTING 1 "${RULE[@]}"
+    echo "FAILED: tailscaled is active but its ts-postrouting jump never" \
+         "appeared; exemption inserted at position 1, but the jump may still" \
+         "land above it and the check timer must re-assert" >&2
+    exit 1
+fi
+
 if ! docker_rules_present; then
     # Not a failure: with no masquerade rule there is nothing to sit above.
     # Insert anyway so the exemption is in place when Docker does start.

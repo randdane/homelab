@@ -45,7 +45,7 @@ open(state, "w").write("\n".join(rules) + "\n" if rules else "")
 '''
 
 
-def run(tmp_path, tailscaled_active, ts_after_reads):
+def run(tmp_path, tailscaled_active, ts_after_reads, ts_arrives_later=True):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (bin_dir / "iptables").write_text(FAKE_IPTABLES)
@@ -61,7 +61,7 @@ def run(tmp_path, tailscaled_active, ts_after_reads):
     result = subprocess.run(["bash", str(SCRIPT)], env=env,
                             capture_output=True, text=True, timeout=30)
     rules = state.read_text().splitlines()
-    if tailscaled_active and TS_JUMP not in rules:
+    if tailscaled_active and ts_arrives_later and TS_JUMP not in rules:
         rules.insert(0, TS_JUMP)  # Tailscale arrives after the script exits
     return result, rules
 
@@ -77,3 +77,11 @@ def test_does_not_wait_for_a_jump_when_tailscaled_is_stopped(tmp_path):
     result, rules = run(tmp_path, tailscaled_active=False, ts_after_reads=10**6)
     assert result.returncode == 0, result.stderr
     assert rules == [OURS, DOCKER]
+
+
+def test_fails_when_tailscales_jump_never_appears(tmp_path):
+    result, rules = run(tmp_path, tailscaled_active=True, ts_after_reads=10**6,
+                        ts_arrives_later=False)
+    assert result.returncode != 0
+    assert "ts-postrouting" in result.stderr
+    assert OURS in rules, rules
