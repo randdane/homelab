@@ -51,8 +51,9 @@ PartOf=tailscaled.service docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# iptables only; anything slower than this is a wedged xtables lock.
-TimeoutStartSec=60
+# Up to 60 s waiting for Docker's rules and Tailscale's jump, then up to 20 s
+# re-asserting; anything slower than this is a wedged xtables lock.
+TimeoutStartSec=120
 # Installed to /usr/local/sbin rather than run from /opt/homelab: this starts
 # at boot, and a root unit whose ExecStart lives in a git checkout breaks the
 # moment that checkout is moved, renamed or mid-rebase.

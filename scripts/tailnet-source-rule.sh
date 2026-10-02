@@ -59,12 +59,24 @@ docker_rules_present() {
     iptables -t nat -S POSTROUTING | grep -qE -- "$LOCAL_MASQ"
 }
 
+# Only waited for while tailscaled runs: with it stopped, the jump never comes.
+ts_jump_pending() {
+    systemctl is-active -q tailscaled.service \
+        && ! iptables -t nat -S POSTROUTING | grep -qE -- "$TS_JUMP"
+}
+
+POLL=${TAILNET_SOURCE_POLL:-2}
+
 # ponytail: polling, because systemd cannot order against work a service does
-# after it reports ready. Docker installs these rules asynchronously, and
-# asserting before they exist would pass trivially and prove nothing.
+# after it reports ready. Docker and Tailscale both install their rules
+# asynchronously, and asserting before they exist passes trivially and proves
+# nothing. That is not hypothetical: on every boot until 2026-10-02 this ran
+# about 2 s before tailscaled reached Running, found no jump, reported ok, and
+# Tailscale then put its jump at position 1 above us. The gated vhosts stayed
+# unreachable from the tailnet until the 15-minute check timer fired.
 for _ in $(seq 30); do
-    docker_rules_present && break
-    sleep 2
+    docker_rules_present && ! ts_jump_pending && break
+    sleep "$POLL"
 done
 
 if ! docker_rules_present; then
@@ -85,7 +97,7 @@ for _ in $(seq 10); do
         echo "ok: exemption precedes the LOCAL-source masquerade and ts-postrouting"
         exit 0
     fi
-    sleep 2
+    sleep "$POLL"
 done
 
 echo "FAILED: exemption sits below Docker's LOCAL-source masquerade or below" \

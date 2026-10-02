@@ -44,5 +44,6 @@ OnFailure=homelab-failure-notify@%n.service
 
 [Service]
 Type=oneshot
-TimeoutStartSec=60
+# See the sibling unit: up to 80 s of waiting is expected at boot.
+TimeoutStartSec=120
 ExecStart=/usr/local/sbin/tailnet-source-rule.sh
