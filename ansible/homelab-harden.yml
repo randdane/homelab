@@ -1,0 +1,174 @@
+# Host hardening for a Docker VM, kept apart from homelab-vm.yml so it can be
+# dry-run, diffed and tested against a live host before the two are merged.
+# It asserts what the VM so far only inherits (sshd policy, security updates)
+# and adds a small sysctl set. Nothing here touches Docker or the stacks.
+#
+#   cd ansible
+#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" homelab-harden.yml --check --diff   # dry run
+#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" homelab-harden.yml
+#
+# NOT done here, on purpose:
+#   - the inbound firewall -- that is $SITE_DIR/pve/firewall/<vmid>.fw on the
+#     Proxmox host, and this VM routes for the tailnet, so it needs its own test
+#   - published container ports, no-new-privileges -- per stack, in compose
+#   - AllowUsers -- key-only login with no root covers it, and a typo locks you out
+#   - uv, the Docker key and the cloud image -- those pins belong in homelab-vm.yml
+
+- name: Host hardening inside each VM
+  hosts: docker_vms
+  become: true
+  tasks:
+    # A drop-in, not an edit of the packaged file: Debian's sshd_config opens
+    # with the Include, and sshd keeps the first value it reads, so these win.
+    - name: sshd policy
+      block:
+        - name: sshd drop-in
+          ansible.builtin.copy:
+            dest: /etc/ssh/sshd_config.d/10-homelab.conf
+            mode: "0644"
+            content: |
+              PermitRootLogin no
+              PasswordAuthentication no
+              KbdInteractiveAuthentication no
+              X11Forwarding no
+          register: sshd_dropin
+          notify: Reload ssh
+
+        # `validate:` on the copy would test the fragment alone. This tests
+        # the whole config as sshd will read it -- every run, so a config
+        # someone else broke is caught here and not at the next restart.
+        - name: Whole sshd config still parses
+          ansible.builtin.command: sshd -t
+          changed_when: false
+          check_mode: false # reads only, so a dry run tests the config too
+      rescue:
+        - name: Drop-in removed, the config did not parse
+          ansible.builtin.file:
+            path: /etc/ssh/sshd_config.d/10-homelab.conf
+            state: absent
+
+        - name: Stop before the reload
+          ansible.builtin.fail:
+            msg: sshd -t rejected the config; the drop-in was removed and ssh was not reloaded.
+
+    # Now, not at the end: a later task failing would drop the reload, and the
+    # next run sees an unchanged drop-in and never reloads at all.
+    - name: Reload ssh before anything else can fail
+      ansible.builtin.meta: flush_handlers
+
+    # Parsing is not winning: a drop-in that sorts before 10- overrides this
+    # one in silence. Read back what sshd will actually enforce, every run.
+    - name: What sshd enforces
+      ansible.builtin.command: sshd -T
+      register: sshd_effective
+      changed_when: false
+      when: not ansible_check_mode
+      failed_when: >-
+        ['permitrootlogin no', 'passwordauthentication no',
+        'kbdinteractiveauthentication no', 'x11forwarding no']
+        | difference(sshd_effective.stdout_lines) | length > 0
+
+    - name: unattended-upgrades
+      ansible.builtin.apt:
+        name: unattended-upgrades
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Periodic apt runs switched on
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: "0644"
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+
+    # The timers do the upgrading. The service only holds a shutdown until a
+    # running upgrade finishes, which is worth having and costs one list item.
+    - name: apt timers and the shutdown guard enabled
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop: [apt-daily.timer, apt-daily-upgrade.timer, unattended-upgrades.service]
+
+    # resolved answers LLMNR on every interface by default: a listener nobody
+    # asked for, and the protocol behind name-spoofing on a shared LAN.
+    - name: resolved.conf.d exists
+      ansible.builtin.file:
+        path: /etc/systemd/resolved.conf.d
+        state: directory
+        mode: "0755"
+
+    - name: LLMNR off
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf.d/homelab.conf
+        mode: "0644"
+        content: |
+          [Resolve]
+          LLMNR=no
+      notify: Restart resolved
+
+    # This VM is the tailnet's subnet router and exit node, so forwarding is
+    # stated rather than left to whoever set it last. rp_filter is 2 (loose):
+    # strict drops valid packets under Tailscale's policy routing. Only `all`
+    # is set: the kernel takes the higher of `all` and the interface's own
+    # value, so 2 here is loose everywhere whatever `default` says.
+    # The redirect keys are globs because `all` and `default` are not enough:
+    # `default` only reaches interfaces created later, and after a reboot lo
+    # and eth0's IPv6 side came back at 1. `*` covers all, default and each
+    # interface present, live and at boot.
+    - name: sysctl drop-in
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/90-homelab.conf
+        mode: "0644"
+        content: |
+          net.ipv4.ip_forward = 1
+          net.ipv6.conf.all.forwarding = 1
+          net.ipv4.conf.all.rp_filter = 2
+          net.ipv4.conf.*.accept_redirects = 0
+          net.ipv6.conf.*.accept_redirects = 0
+          net.ipv4.conf.*.send_redirects = 0
+          kernel.kptr_restrict = 2
+          kernel.dmesg_restrict = 1
+          kernel.yama.ptrace_scope = 1
+
+    # Every run, not a handler: a value changed by hand leaves the file
+    # untouched, so a handler would never fire and the drift would stay.
+    - name: Apply sysctl
+      ansible.builtin.command: sysctl --system
+      changed_when: false
+
+    # Same reason as sshd: a later file in sysctl.d wins without a word.
+    # One value per plain key set above, in the same order; a key added there
+    # and not here is a key nothing watches. The glob keys are the next task.
+    - name: What the kernel enforces
+      ansible.builtin.command: >-
+        sysctl -n net.ipv4.ip_forward net.ipv6.conf.all.forwarding
+        net.ipv4.conf.all.rp_filter
+        kernel.kptr_restrict kernel.dmesg_restrict kernel.yama.ptrace_scope
+      register: sysctl_effective
+      changed_when: false
+      when: not ansible_check_mode
+      failed_when: sysctl_effective.stdout_lines != ['1', '1', '2', '2', '1', '1']
+
+    # The redirect keys are globs, so reading `all` back proves nothing about
+    # eth0, lo or default: an override naming one of those passed unnoticed.
+    - name: What every interface enforces
+      ansible.builtin.shell: >-
+        grep -L '^0$' /proc/sys/net/ipv[46]/conf/*/accept_redirects
+        /proc/sys/net/ipv4/conf/*/send_redirects || true
+      register: redirects_effective
+      changed_when: false
+      when: not ansible_check_mode
+      failed_when: redirects_effective.stdout != ''
+
+  handlers:
+    - name: Reload ssh
+      ansible.builtin.service:
+        name: ssh
+        state: reloaded
+
+    - name: Restart resolved
+      ansible.builtin.service:
+        name: systemd-resolved
+        state: restarted
