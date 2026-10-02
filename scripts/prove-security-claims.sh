@@ -151,7 +151,10 @@ read_only() {
 
   out=$(on_target 'sudo ss -lntuH | grep -c ":5355 "')
   check NET-5 "nothing listens on the LLMNR port" "0" "$out"
-  if timeout 5 bash -c "</dev/tcp/$HOST/5355" 2>/dev/null; then out=open; else out=closed; fi
+  # A dead host refuses nothing and is "closed" too, so a closed 5355 only
+  # counts while ssh on the same host is answering.
+  if ! timeout 5 bash -c "</dev/tcp/$HOST/22" 2>/dev/null; then out=unreachable
+  elif timeout 5 bash -c "</dev/tcp/$HOST/5355" 2>/dev/null; then out=open; else out=closed; fi
   check NET-5 "LLMNR port does not accept a connection from here" "closed" "$out"
 
   out=$(on_target 'cat /proc/sys/net/ipv4/ip_forward /proc/sys/net/ipv6/conf/all/forwarding' | tr '\n' ' ')
