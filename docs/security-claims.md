@@ -16,8 +16,13 @@ a row says "from another host".
   attacked it. Weaker than proven.
 - **unproven** — claimed, never tested.
 
-Nothing here has been proven on production yet. The playbook had only been
-dry-run there when this was written.
+The statuses in the tables describe the throwaway VM. On production the
+playbook was applied on 2026-10-02 and the read-only suite went from 8 passed,
+9 failed to 17 passed, 0 failed, with no container restarted. That covers
+SSH-1 to SSH-4, UPD-1, UPD-2, NET-1 to NET-3, NET-5, NET-6 and KRN-1 to KRN-3,
+plus PLY-1 (the second run changed nothing). The fault-injecting and reboot
+proofs (SSH-5, SSH-6, NET-4, NET-7, NET-8, PLY-2, PLY-3) have never run on
+production and are not meant to, except the reboot.
 
 ## Rules for this file
 
@@ -93,7 +98,9 @@ story. Each becomes a claim when something enforces it.
 | A `Match` block can re-enable a setting per user | SSH-5 reads global values only. A `Match User` block with `X11Forwarding yes` parsed and took effect in testing |
 | Docker's own packages are not auto-updated | UPD-2's origins are Debian's. Adding Docker's would restart every container unattended |
 | Nothing reboots after a kernel update, or says one is due | No automatic reboot, no notice |
-| Tailnet routing under NET-1 to NET-3 | The throwaway VM had no tailnet identity. A routed network namespace stood in for it and worked; subnet-route and exit-node traffic are unproven |
+| Tailnet routing under NET-1 to NET-3 | The throwaway VM had no tailnet identity; a routed network namespace stood in for it and worked. On production after the apply (2026-10-02) the routes are still advertised and approved and the kernel logged no dropped source, but subnet-route and exit-node traffic from outside the LAN has not been checked |
+| NET-3 reads `all` only | systemd's packaged `50-default.conf` already sets every interface but `all` to 2. A host with `all = 0` fails NET-3 while filtering loosely on every interface, which is what production looked like before the apply. The proof is right about `all` and blind to the rest |
+| Persistence on production | PLY-2 ran on the throwaway VM. Production has not been rebooted since the apply |
 | IPv6 router advertisements with forwarding on | Not the kernel's call here: `systemd-networkd` owns the interface and holds `accept_ra` at 0 with forwarding on *or* off (measured 2026-10-02), handling advertisements itself. So `accept_ra = 2` would change nothing. networkd does still accept them with forwarding on: a test advertiser on a networkd-managed interface gave it an address and a default route. That was a stand-in interface under this VM's own config; the real LAN hands out no global IPv6 address, so the production path is unproven |
 | Forwarded IPv6 is not filtered | Forwarding is on (NET-6) and there are no ip6tables rules. Part of the missing firewall, but worth its own line: the VM will route v6 for anyone who can send it a packet |
 | The installer script, apt key and cloud image are fetched unpinned | In `ansible/homelab-vm.yml`, not the hardening playbook |
