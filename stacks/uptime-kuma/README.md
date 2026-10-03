@@ -6,10 +6,9 @@ answering.
 happily crash-loop a container all night, and `docker ps` calls it `Up`. The
 first report of an outage was going to be family texting about Jellyfin.
 **URL:** https://kuma.${PUBLIC_DOMAIN} — tailnet and LAN only, `remote_ip`-gated
-in Caddy. port 3004 is bound to the host's loopback only, and
-`ssh -L 3004:127.0.0.1:3004 <host>` is the break-glass path: this is the
-monitor that reports Caddy being down, so reaching it *through* Caddy cannot
-be the only way in.
+in Caddy. `http://<tailnet-ip>:3004` still answers and is the break-glass path:
+this is the monitor that reports Caddy being down, so reaching it *through*
+Caddy cannot be the only way in.
 
 ## First-run setup, which is not automated
 
@@ -139,13 +138,9 @@ reports in.
 | interval | 172800 (2 days) | tolerates exactly one missed day; alerts on two |
 | maxretries | 0 | Kuma applies retries to pushed failures, which would delay a notification the phone has already decided to send |
 
-**Broken by the loopback bind, undecided:** the phone pushes to
-`http://<tailnet-ip>:3004/api/push/<PUSH_TOKEN>` -- the published
+The push URL is `http://<tailnet-ip>:3004/api/push/<PUSH_TOKEN>` -- the published
 port directly, **never** `kuma.{$PUBLIC_DOMAIN}`. That vhost is itself gated,
 so routing the alarm through it means a vhost outage suppresses its own alert.
-Bound to loopback, that URL no longer answers from the phone, so the dead-man's
-switch would go silent. Needs a separate decision (e.g. a second, non-forward-auth
-path for `/api/push/*`) before this is deployed.
 
 `<PUSH_TOKEN>` lives in Kuma's database and in Tasker, and nowhere else. It is
 also kept in `~/.local/state/homelab/kuma-push-token`, mode 0600, so it can be
