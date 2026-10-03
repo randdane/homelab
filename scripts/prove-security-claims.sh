@@ -53,6 +53,14 @@ on_target() { ssh $SSH_OPTS -o BatchMode=yes -o ConnectTimeout=10 "$TARGET" "$@"
 # shellcheck disable=SC2086
 ssh_as() { ssh $SSH_OPTS -o BatchMode=yes -o ConnectTimeout=10 "$@"; }
 
+# tcp_from_here PORT -> open | closed | dropped. A refusal comes back at once;
+# a firewall DROP never answers, so only the timeout (exit 124) means dropped.
+# Callers guard on ssh answering first: a dead host also times out.
+tcp_from_here() {
+  timeout 5 bash -c "</dev/tcp/$HOST/$1" 2>/dev/null
+  case $? in 0) echo open ;; 124) echo dropped ;; *) echo closed ;; esac
+}
+
 play() {
   (cd "$REPO/ansible" && ansible-playbook -i "$INVENTORY" -l "$LIMIT" homelab-harden.yml "$@" </dev/null 2>&1)
 }
@@ -175,6 +183,17 @@ read_only() {
   fi
   check NET-9 "no application port accepts a connection from here" "none" "$open_ports"
 
+  # NET-10. A port the hypervisor firewall does not allow from the LAN. On the
+  # real host 3004 (the monitor) listens on every interface, so only the
+  # firewall keeps it from answering: it must time out, not open. On a
+  # throwaway VM nothing listens there, but the firewall still drops before the
+  # kernel could refuse, so "dropped" and not "closed" is the proof the
+  # firewall is on. Must stay a port allowed by no rule in pve/firewall/*.fw.
+  local denied_port=3004
+  if ! timeout 5 bash -c "</dev/tcp/$HOST/22" 2>/dev/null; then out=unreachable
+  else out=$(tcp_from_here "$denied_port"); fi
+  check NET-10 "a port the hypervisor firewall does not allow is dropped, not refused" "dropped" "$out"
+
   out=$(on_target 'cat /proc/sys/net/ipv4/ip_forward /proc/sys/net/ipv6/conf/all/forwarding' | tr '\n' ' ')
   check NET-6 "forwarding is on, v4 and v6" "1 1 " "$out"
 
@@ -242,8 +261,14 @@ intrusive_checks() {
   check NET-4 "a bridge created after the run has the same settings" "END " "$out"
 
   on_target 'sudo docker run -d --name claims-web -p 18080:80 nginx:alpine >/dev/null 2>&1; sleep 3'
-  out=$(curl -s -o /dev/null -m 8 -w '%{http_code}' "http://$HOST:18080/")
-  check NET-8 "a published container port answers from here" "200" "$out"
+  # Fetched on the target, not from here: the hypervisor firewall drops 18080
+  # from other hosts. curl is in the VM's base packages (ansible/homelab-vm.yml).
+  out=$(on_target "curl -s -o /dev/null -m 8 -w '%{http_code}' http://127.0.0.1:18080/")
+  check NET-8 "a published container port answers on the target" "200" "$out"
+  # The same port, published after the firewall was written, is still dropped:
+  # the reason the firewall sits at the hypervisor and not in iptables INPUT.
+  out=$(tcp_from_here 18080)
+  check NET-8 "the same published port is dropped from here" "dropped" "$out"
   out=$(on_target 'sudo docker exec claims-web wget -q -T 8 -O /dev/null http://deb.debian.org/ && echo ok')
   check NET-8 "a container reaches the outside" "ok" "$out"
   cleanup
