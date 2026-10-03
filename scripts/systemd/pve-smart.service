@@ -18,4 +18,5 @@ TimeoutStartSec=300
 # from sda to sdb, and the report quietly followed the wrong disk.
 ExecStart=/usr/local/lib/homelab/scripts/smart-report.sh \
     /dev/disk/by-id/ata-ST6000NE000-2KR101_WSD0TWDV \
+    /dev/disk/by-id/ata-ST6000NM0024-1HT17Z_S4D0CADY \
     /dev/disk/by-id/nvme-SAMSUNG_MZVKW1T0HMLH-000H1_S34DNX0K901441

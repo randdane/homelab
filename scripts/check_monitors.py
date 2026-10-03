@@ -14,9 +14,10 @@ stopped being reachable and the only symptom is an alert that looks like an
 outage.
 
 That is not hypothetical. Monitor 5 probed the host's own tailnet IP,
-the host's tailnet address and port, from inside a container on the `edge` bridge. UFW is
-default-deny inbound with 22/tcp as its only rule, so every probe was dropped
-in INPUT. Vikunja served perfectly for eleven hours while its monitor reported
+the host's tailnet address and port, from inside a container on the `edge` bridge. The
+first server's UFW was default-deny inbound with 22/tcp as its only rule, so
+every probe was dropped in INPUT. (The VM that replaced it has no UFW, and that
+address answers from a bridge today -- the lesson is the class, not the rule.) Vikunja served perfectly for eleven hours while its monitor reported
 `timeout of 48000ms exceeded`. See
 $SITE_DIR/docs/incident_reports/2026-08-26-vikunja-monitor-red.md.
 
@@ -366,9 +367,9 @@ def main():
             "\n  A monitor is reachable from where it runs, not from where you\n"
             "  are. Probe it in the container before believing any URL:\n"
             f"    docker exec {CONTAINER} curl -sS -o /dev/null -w '%{{http_code}}\\n' <url>\n"
-            "  Address siblings by container name on a shared network. The host's\n"
-            "  tailnet IP is NOT reachable from a bridge -- UFW is default-deny\n"
-            "  inbound (lessons-learned 25).\n"
+            "  Address siblings by container name on a shared network. A gated\n"
+            "  vhost refuses a bridge address by design, and a host address\n"
+            "  works only while nothing filters it (lessons-learned 25).\n"
             "  Edit the monitor in the web UI; `--list` shows the result.",
             file=sys.stderr)
         return 1

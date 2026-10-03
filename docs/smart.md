@@ -13,7 +13,7 @@ VM, because VM 101's disk is virtio and has no SMART data:
 | | Runs | Says something when |
 |---|---|---|
 | `smartd` → `smart-alert.sh` | continuously, as a daemon | a drive reports a problem |
-| `pve-smart.timer` → `smart-report.sh` on the `tank` disk and the NVMe, by `/dev/disk/by-id` name | monthly, 1st at 09:00 (+≤1 h) | always — it is the heartbeat |
+| `pve-smart.timer` → `smart-report.sh` on both `tank` mirror disks and the NVMe, by `/dev/disk/by-id` name | monthly, 1st at 09:00 (+≤1 h) | always — it is the heartbeat |
 
 The second exists because the first is silent when healthy, and a dead alerter
 is silent in exactly the same way. That is not hypothetical: `smartd` had been
@@ -228,6 +228,11 @@ link before deciding a disk is NVMe. The new HPE MB6000GEQNK has no
 shows `pending=? uncorrectable=?`. That means "not reported", not a fault;
 its device statistics page reports 0 uncorrectable errors. First run after the
 change: all three healthy, notification sent.
+
+**2026-10-03: a second disk, mirrored.** A Seagate ST6000NM0024 (serial
+S4D0CADY) passed its extended self-test at 9 power-on hours and was attached to
+`tank`, which is now a two-way mirror. The unit names it alongside the old
+disk and the NVMe.
 
 **2026-09-26: the HPE disk is going back.** It passed its extended
 self-test, but it had 87,530 power-on hours, too old to pair with a
