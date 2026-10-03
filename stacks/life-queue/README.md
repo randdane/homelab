@@ -5,9 +5,9 @@ phone notifications through ntfy.
 **Why I care:** One queue for everything — errands, health, money, homelab,
 projects. The measure of success is that the weekly review keeps happening,
 not the task count.
-**URL:** `https://vikunja.${PUBLIC_DOMAIN}`. Break-glass when Caddy is down:
-`http://<HOMELAB_HOST>:3456` on the LAN, or `http://homelab:3456` over the
-tailnet.
+**URL:** `https://vikunja.${PUBLIC_DOMAIN}`. Break-glass when Caddy is down: port 3456 is
+bound to the host's loopback only, so tunnel to it with
+`ssh -L 3456:127.0.0.1:3456 <host>` and browse `http://localhost:3456`.
 
 **Reminders go through ntfy**, since 2026-09-13: an HTTP Request node named
 `Notify ntfy` posts JSON to `$env.NTFY_URL` with the Vikunja link as `click`.
@@ -81,7 +81,7 @@ If it is ever lost, reset it rather than hunting:
 ssh homelab 'docker exec life-queue-n8n n8n user-management:reset'
 ```
 
-Then reload `http://homelab:5679` and create the owner account again.
+Then reload n8n (loopback-only, no vhost: `ssh -L 5679:127.0.0.1:5679 homelab`, then `http://localhost:5679`) and create the owner account again.
 
 **Measured 2026-09-13, because "resets the database to the default user
 state" reads alarmingly:** the reset cost nothing but the login. The

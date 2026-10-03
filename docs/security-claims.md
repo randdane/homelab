@@ -68,6 +68,7 @@ production and are not meant to, except the reboot.
 | NET-6 | Forwarding stays on, v4 and v6 — the VM routes for the tailnet, so this is an availability claim | `sysctl -n net.ipv4.ip_forward net.ipv6.conf.all.forwarding` | `1` and `1` | read back 2026-10-01 |
 | NET-7 | A later file in `sysctl.d` cannot quietly undo a value the playbook sets: every plain key is read back, and the redirect keys are read back on every interface | Write `net.ipv4.conf.all.rp_filter = 1` to `/etc/sysctl.d/99-claims-test.conf`, run the playbook, remove the file. Repeat with `net.ipv4.conf.lo.send_redirects = 1` | The play fails at "What the kernel enforces", then at "What every interface enforces" | proven 2026-10-02 |
 | NET-8 | None of the above breaks container networking | Run a container with a published port; fetch it from another host; fetch an outside URL from inside the container | Both succeed | proven 2026-10-01 |
+| NET-9 | Application ports behind the reverse proxy refuse connections from another host. Bound to loopback in compose, so the proxy's allowlist and SSO cannot be skipped. On a host with no stacks running nothing listens, so this passes trivially and proves nothing there | From another host, a TCP connect to each of 3001 3002 3004 3006 3456 5679 9925 | All seven refused | unproven — not yet deployed |
 
 ## Kernel
 
@@ -93,7 +94,7 @@ story. Each becomes a claim when something enforces it.
 | Gap | Why it is open |
 |---|---|
 | No inbound firewall on the VM | Belongs in the hypervisor's per-VM firewall file, which accepts inbound by default today. The VM routes for the tailnet, so a default-deny needs its own traffic list and test |
-| Application ports published on every interface | LAN clients reach those apps directly, past the reverse proxy's allowlist and SSO. Per stack, in compose |
+| Two ports are still published on every interface, by design | The push-notification server's port, because it is the alert path and deliberately not behind the reverse proxy, and the git server's ssh port, because ssh never passes through the proxy. LAN clients reach both directly. Both stay open until the hypervisor firewall restricts them. The other application ports are NET-9 |
 | The login user is root-equivalent | Passwordless sudo, and Docker group membership on the real VM. The ssh key is the only barrier |
 | A `Match` block can re-enable a setting per user | SSH-5 reads global values only. A `Match User` block with `X11Forwarding yes` parsed and took effect in testing |
 | Docker's own packages are not auto-updated | UPD-2's origins are Debian's. Adding Docker's would restart every container unattended |

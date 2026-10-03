@@ -70,9 +70,10 @@ the Authentik SSO redirect is registered against. It replaced
 address to HTTPS, which that port does not speak, so the login page was
 unreachable from a browser while `curl` got it fine.
 
-The published port stays. Remotes already pointing at
-`http://<HOMELAB_HOST>:3002/` keep working, and it is the way in when Caddy is
-down. SSH clone URLs are built from `HOMELAB_HOST` (`<HOMELAB_HOST>:3003`) and
+Port 3002 is bound to the host's loopback only, so remotes pointing at
+`http://<HOMELAB_HOST>:3002/` no longer work from another machine: repoint
+them at the vhost. `ssh -L 3002:127.0.0.1:3002 <host>` is the way in when
+Caddy is down. SSH clone URLs are built from `HOMELAB_HOST` (`<HOMELAB_HOST>:3003`) and
 never touch Caddy.
 
 **SSO:** auth source `authentik` (OpenID Connect), created with

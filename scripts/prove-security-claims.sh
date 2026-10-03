@@ -157,6 +157,23 @@ read_only() {
   elif timeout 5 bash -c "</dev/tcp/$HOST/5355" 2>/dev/null; then out=open; else out=closed; fi
   check NET-5 "LLMNR port does not accept a connection from here" "closed" "$out"
 
+  # NET-9. Mirrors the loopback-bound host ports in stacks/*/compose.yaml
+  # (homepage, forgejo web, uptime-kuma, karakeep, vikunja, n8n, mealie).
+  # Keep in step by hand: nothing derives it. ntfy 2586 and forgejo ssh 3003
+  # are absent on purpose -- they stay published on every interface.
+  # Same guard as NET-5: a dead host refuses nothing, so "none open" only
+  # counts while ssh answers. On a host with no stacks nothing listens and
+  # this passes trivially.
+  local app_ports="3001 3002 3004 3006 3456 5679 9925" p open_ports=""
+  if ! timeout 5 bash -c "</dev/tcp/$HOST/22" 2>/dev/null; then open_ports=unreachable
+  else
+    for p in $app_ports; do
+      if timeout 5 bash -c "</dev/tcp/$HOST/$p" 2>/dev/null; then open_ports+="$p "; fi
+    done
+    if [[ -z $open_ports ]]; then open_ports=none; fi
+  fi
+  check NET-9 "no application port accepts a connection from here" "none" "$open_ports"
+
   out=$(on_target 'cat /proc/sys/net/ipv4/ip_forward /proc/sys/net/ipv6/conf/all/forwarding' | tr '\n' ' ')
   check NET-6 "forwarding is on, v4 and v6" "1 1 " "$out"
 

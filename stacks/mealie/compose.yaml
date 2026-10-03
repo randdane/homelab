@@ -50,7 +50,7 @@ services:
       # admin made them, and only mealie-users gets past Authentik's binding.
       - OIDC_REQUIRES_EMAIL_VERIFICATION=false
     ports:
-      - "${PORT:-9925}:9000"
+      - "127.0.0.1:${PORT:-9925}:9000"
     volumes:
       - data:/app/data/
     # Joins `edge` so Caddy can reach it by container name for the

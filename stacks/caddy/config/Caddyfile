@@ -44,8 +44,8 @@
 #
 # The first line serves Authentik's own callback/sign-out paths on the app's
 # host; without it the post-login redirect lands on the app and 404s. If
-# Authentik is down these vhosts are down too: use the published ports or
-# the ssh tunnels each stack's README gives.
+# Authentik is down these vhosts are down too: use the ssh tunnels to the
+# loopback-bound ports that each stack's README gives.
 (authentik_forward_auth) {
 	reverse_proxy /outpost.goauthentik.io/* authentik-server:9000
 	forward_auth authentik-server:9000 {
@@ -225,8 +225,8 @@ jellyfin.{$DUCKDNS_HOST} {
 	# Homepage, the dashboard. Internal by definition -- it lists what exists
 	# here, which is precisely what should not be readable from outside.
 	#
-	# Port 3001 on the host stays published as the break-glass path, the same
-	# arrangement vikunja has with 3456.
+	# Port 3001 on the host is bound to 127.0.0.1 only: the break-glass path
+	# is an ssh tunnel, the same arrangement vikunja has with 3456.
 	@homepage {
 		host homepage.{$PUBLIC_DOMAIN}
 		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
@@ -298,7 +298,8 @@ jellyfin.{$DUCKDNS_HOST} {
 	}
 
 	# Karakeep, the bookmark archiver. Internal: it holds a copy of everything
-	# saved to it. Its published port 3006 stays as the break-glass path.
+	# saved to it. Its port 3006 is loopback-only on the host: the break-glass
+	# path is an ssh tunnel.
 	@karakeep {
 		host karakeep.{$PUBLIC_DOMAIN}
 		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
@@ -315,8 +316,9 @@ jellyfin.{$DUCKDNS_HOST} {
 		reverse_proxy mealie:9000
 	}
 
-	# Forgejo's web UI and HTTPS git. Its published port 3002 stays: existing
-	# remotes use it, and it is the break-glass path when Caddy is down.
+	# Forgejo's web UI and HTTPS git. Its port 3002 is loopback-only on the
+	# host, so remotes must use this vhost; an ssh tunnel is the break-glass
+	# path when Caddy is down.
 	# SSH git (3003) never passes through here.
 	@forgejo {
 		host forgejo.{$PUBLIC_DOMAIN}

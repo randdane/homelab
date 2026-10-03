@@ -5,7 +5,8 @@ the text, and organises it with lists and tags.
 **Why I care:** A bookmark is a promise someone else has to keep. A snapshot
 still works when the site is paywalled, rewritten, or gone.
 **URL:** https://karakeep.${PUBLIC_DOMAIN} (gated to LAN and tailnet);
-`http://<HOMELAB_HOST>:3006` is the break-glass path if Caddy is down.
+port 3006 is bound to the host's loopback, so if Caddy is down use
+`ssh -L 3006:127.0.0.1:3006 <host>` and browse `http://localhost:3006`.
 
 ## Notes
 

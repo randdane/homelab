@@ -13,8 +13,8 @@ x-homelab:
     one irrecoverably. VIKUNJA_SERVICE_SECRET must also be set, or Vikunja
     generates a random JWT secret per boot and logs everyone out on every
     restart. Phone access is over the tailnet (headscale), so the control
-    plane must be healthy or reminders are laptop-only; the LAN address is
-    the break-glass path when it is not.
+    plane must be healthy or reminders are laptop-only; the break-glass
+    path when it is not is an ssh tunnel to the loopback-bound port 3456.
   description: Vikunja for tasks, n8n for the reminder flow out through ntfy
 
 services:
@@ -36,13 +36,14 @@ services:
       VIKUNJA_AUTH_OPENID_PROVIDERS_AUTHENTIK_CLIENTID: ${VIKUNJA_OIDC_CLIENT_ID:-}
       VIKUNJA_AUTH_OPENID_PROVIDERS_AUTHENTIK_CLIENTSECRET: ${VIKUNJA_OIDC_CLIENT_SECRET:-}
     ports:
-      # Bound to all interfaces, unlike v1's 127.0.0.1: the phone reaches
-      # this over the tailnet, and the LAN address is the break-glass path
-      # when the control plane is down. Hence exposure: lan, not internal.
+      # Loopback only. It was bound to all interfaces so the phone could
+      # reach it over the tailnet; the vikunja vhost does that now, behind
+      # Caddy's remote_ip allowlist, which a direct host port would skip.
+      # exposure stays `lan` because that vhost is reachable from the LAN.
       #
-      # Still published even though Caddy now fronts it at the vikunja
-      # vhost: this port IS the break-glass path when Caddy is down.
-      - "${VIKUNJA_PORT:-3456}:3456"
+      # Still published, on loopback: this port IS the break-glass path when
+      # Caddy is down -- `ssh -L 3456:127.0.0.1:3456 <host>`.
+      - "127.0.0.1:${VIKUNJA_PORT:-3456}:3456"
     networks:
       # `edge` is how Caddy reaches this by container name. Joining it does
       # not expose anything by itself -- see the vhost in stacks/caddy, which
@@ -121,7 +122,10 @@ services:
       # env_file.
       NTFY_URL: http://ntfy:80
     ports:
-      - "${N8N_PORT:-5679}:5678"
+      # Loopback only: n8n has no vhost and nothing external calls its
+      # webhooks (reminders go out to ntfy over `edge`). Reach the editor with
+      # `ssh -L 5679:127.0.0.1:5679 <host>`.
+      - "127.0.0.1:${N8N_PORT:-5679}:5678"
     networks:
       # default for vikunja:3456; edge for ntfy:80.
       - default
@@ -135,7 +139,8 @@ services:
       homepage.group: Personal
       homepage.name: life-queue reminders
       homepage.description: n8n flow that turns Vikunja reminders into phone notifications
-      homepage.href: http://${HOMELAB_HOST:-localhost}:${N8N_PORT:-5679}
+      # No homepage.href: n8n's port is loopback-only and it has no vhost, so
+      # any link here would be a dead tile. See the ports block.
       homepage.icon: n8n
       docker-volume-backup.stop-during-backup: "true"
     healthcheck:

@@ -65,7 +65,7 @@ services:
       - OAUTH_PROVIDER_NAME=Authentik
       - OAUTH_ALLOW_DANGEROUS_EMAIL_ACCOUNT_LINKING=true
     ports:
-      - "${PORT:-3006}:3000"
+      - "127.0.0.1:${PORT:-3006}:3000"
     volumes:
       - data:/data
       # Secrets live outside the repo, in the host user's XDG dir.

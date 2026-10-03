@@ -88,7 +88,9 @@ services:
       - FORGEJO__oauth2_client__ENABLE_AUTO_REGISTRATION=true
       - FORGEJO__oauth2_client__ACCOUNT_LINKING=auto
     ports:
-      - "${PORT:-3002}:3000"
+      # Web is loopback-only (Caddy reaches it on `edge`); ssh stays on every
+      # interface on purpose -- git over ssh never passes through Caddy.
+      - "127.0.0.1:${PORT:-3002}:3000"
       - "${SSH_PORT:-3003}:22"
     # `edge` so Caddy reaches it for the forgejo.<PUBLIC_DOMAIN> vhost, so
     # uptime-kuma can reach /api/healthz by container name, and so the SSO

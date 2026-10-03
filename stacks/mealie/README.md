@@ -4,8 +4,9 @@
 keeps the ingredients. Meal planning and a shopping list on top.
 **Why I care:** Recipe sites vanish, get paywalled, or rewrite their pages.
 An imported recipe is a local copy.
-**URL:** https://mealie.${PUBLIC_DOMAIN} (gated: LAN and tailnet only). The
-published port `:9925` still answers and is the break-glass path.
+**URL:** https://mealie.${PUBLIC_DOMAIN} (gated: LAN and tailnet only). Port
+`:9925` is bound to the host's loopback only; the break-glass path is
+`ssh -L 9925:127.0.0.1:9925 <host>`.
 
 **First login is a known default:** `changeme@example.com` / `MyPassword`.
 Anyone on the LAN can use it until you change it, so change the email and

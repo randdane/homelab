@@ -8,12 +8,14 @@ x-homelab:
   lifecycle: production
   purpose: The dashboard -- so a running stack cannot be forgotten
   host: both
-  # `lan`, not `internal`: port 3001 is published on every interface, and
-  # deliberately so -- it is the break-glass path for when Caddy, which serves
-  # the homepage.<PUBLIC_DOMAIN> vhost, is the thing that is broken. exposure
-  # records what can reach this, not how sensitive it is. The dashboard lists
-  # what runs here, which is worth keeping off the internet; that argues for
-  # the Caddy allowlist in front of it, not for understating the open port.
+  # `lan`, not `internal`: Caddy serves the homepage.<PUBLIC_DOMAIN> vhost to
+  # the LAN and tailnet, so another machine can reach it even though port 3001
+  # is bound to 127.0.0.1 -- that bind is the break-glass path for when Caddy
+  # is the thing that is broken (`ssh -L 3001:127.0.0.1:3001 <host>`).
+  # exposure records what can reach this, not how sensitive it is. The
+  # dashboard lists what runs here, which is worth keeping off the internet;
+  # that argues for the Caddy allowlist in front of it, not for understating
+  # the vhost.
   exposure: lan
   data: replaceable
   prerequisites: Docker socket, behind this stack's read-only socket proxy
@@ -24,7 +26,10 @@ services:
     container_name: homepage
     restart: unless-stopped
     ports:
-      - "3001:3000"
+      # Loopback only: a published port on every interface skips Caddy's
+      # remote_ip allowlist and Authentik. Caddy reaches this by container
+      # name on `edge`, never through the host port.
+      - "127.0.0.1:3001:3000"
     environment:
       - TZ=${TZ:-America/Chicago}
       # Required since v1.0 -- without it every request 400s with a

@@ -20,16 +20,16 @@ they reserve nothing.
 2283:2283 immich-server
 2586:80 ntfy
 3000:3000 flowise
-3001:3000 homepage
-3002:3000 forgejo
+127.0.0.1:3001:3000 homepage
+127.0.0.1:3002:3000 forgejo
 3003:22 forgejo
 3004:3001 uptime-kuma
 3005:3000 invidious
-3006:3000 karakeep
+127.0.0.1:3006:3000 karakeep
 3007:3000 lgtm-grafana
 3333:3333 ghostfolio
 HOMELAB_HOST:3389:3389 authentik-ldap
-3456:3456 life-queue-app
+127.0.0.1:3456:3456 life-queue-app
 3478:3478/udp headscale
 HOMELAB_HOST:4242:4242/udp crowdsec
 4317:4317 lgtm-otel-collector
@@ -38,7 +38,7 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 5001:5001 dockge
 5055:5055 arr-jellyseerr
 5678:5678 n8n
-5679:5678 life-queue-n8n
+127.0.0.1:5679:5678 life-queue-n8n
 5984:5984 obsidian-livesync
 6767:6767 arr-bazarr
 6881:6881 arr-gluetun
@@ -67,5 +67,5 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 8989:8989 arr-sonarr
 127.0.0.1:9000:9000 authentik-server
 9696:9696 arr-gluetun
-9925:9000 mealie
+127.0.0.1:9925:9000 mealie
 ```

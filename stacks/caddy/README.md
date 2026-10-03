@@ -203,7 +203,7 @@ Two additions from 2026-09-29, both in `config/Caddyfile`:
   inside their `handle`, after the `remote_ip` gate. Authentik proxy provider
   `admin-uis`, forward_domain on the parent domain, group `admin-uis`, run by
   Authentik's embedded outpost. One sign-in covers all four. If Authentik is
-  down they are down too: use the published ports or ssh tunnels.
+  down they are down too: use ssh tunnels to the loopback-bound ports.
   **The embedded outpost's `authentik_host` must be the public URL.** It
   shipped as `http://localhost:9000`, so every redirect sent the browser to
   localhost. Set in Authentik → Outposts → embedded outpost → config.

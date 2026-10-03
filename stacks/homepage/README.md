@@ -36,10 +36,11 @@ See `../../docs/conventions.md` for the label block.
   denies every write and every host-root endpoint, but the `CONTAINERS=1` it
   needs still exposes every container's environment. Bounded takeover, not
   bounded disclosure: do not publish this beyond the LAN. (`exposure` reads
-  `lan` because port 3001 is published on every interface. It records what can
-  reach the stack, not how sensitive it is -- this paragraph used `internal`
-  to mean "sensitive", which is the drift that made three stacks understate an
-  open port.) Since 2026-09-05 it has
+  `lan` because the Caddy vhost is reachable from the LAN and tailnet; port
+  3001 itself is bound to `127.0.0.1`. It records what can reach the stack,
+  not how sensitive it is -- this paragraph used `internal` to mean
+  "sensitive", which is the drift that made three stacks understate an open
+  port.) Since 2026-09-05 it has
   a Caddy vhost, `homepage.<PUBLIC_DOMAIN>`, and that is not a contradiction:
   the name is public but the vhost is `remote_ip`-gated to the tailnet and
   LAN, so nothing outside can reach it. Do not drop that allowlist. See
