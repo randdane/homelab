@@ -23,8 +23,9 @@ services:
     environment:
       - TZ=${TZ:-America/Chicago}
     ports:
-      # 3001 is Homepage's; see docs/ports.md.
-      - "${PORT:-3004}:3001"
+      # 3001 is Homepage's; see docs/ports.md. Loopback only: see the push
+      # URL in README.md, which this broke for the phone.
+      - "127.0.0.1:${PORT:-3004}:3001"
     volumes:
       - data:/app/data
     labels:

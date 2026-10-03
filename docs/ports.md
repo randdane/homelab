@@ -23,7 +23,7 @@ they reserve nothing.
 127.0.0.1:3001:3000 homepage
 127.0.0.1:3002:3000 forgejo
 3003:22 forgejo
-3004:3001 uptime-kuma
+127.0.0.1:3004:3001 uptime-kuma
 3005:3000 invidious
 127.0.0.1:3006:3000 karakeep
 3007:3000 lgtm-grafana

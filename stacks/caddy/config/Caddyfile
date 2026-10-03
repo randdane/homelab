@@ -240,8 +240,8 @@ jellyfin.{$DUCKDNS_HOST} {
 
 	# Uptime Kuma, the thing that tells you the rest of this file is broken.
 	#
-	# Its published port 3004 stays, and that is not redundancy for its own
-	# sake: if Caddy is down, this vhost is down, and the monitor that would
+	# Its port 3004 stays published, on loopback, and that is not redundancy
+	# for its own sake: if Caddy is down, this vhost is down, and the monitor that would
 	# have reported it is unreachable through exactly the component that
 	# failed. Same argument as authentik's 127.0.0.1:9000 escape hatch.
 	@kuma {
