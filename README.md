@@ -42,11 +42,11 @@ Both are defined here so the next stack does not reinvent them.
 
 A top-level Compose extension field in every `stacks/*/compose.yaml`, read by
 `scripts/status.py`. It describes the *stack*, which is why it is not a service
-label: choosing a representative service is ambiguous (`lgtm` has no `lgtm`
+label: choosing a representative service is ambiguous (`paperless` has no `paperless`
 service), and renaming that service would silently delete the stack's intent.
 
 ```yaml
-name: lgtm
+name: paperless
 
 x-homelab:
   lifecycle: production      # planned | developing | production | retired | not-needed

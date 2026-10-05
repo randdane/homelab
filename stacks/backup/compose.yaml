@@ -90,10 +90,6 @@ services:
       # committed anywhere and this works unchanged on a server.
       - ${BACKUP_ARCHIVE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/homelab/backups}:/archive
       # Sources. One line per stateful volume, read-only.
-      #- lgtm_loki-data:/backup/lgtm-loki:ro
-      #- lgtm_tempo-data:/backup/lgtm-tempo:ro
-      #- lgtm_mimir-data:/backup/lgtm-mimir:ro
-      #- lgtm_grafana-data:/backup/lgtm-grafana:ro
       # The tailnet's identity: noise + DERP private keys, the node database,
       # and the Let's Encrypt cache. Restoring the house without this means
       # re-registering every device by hand.
@@ -183,14 +179,6 @@ services:
       - ntfy_data:/backup/ntfy:ro
 
 volumes:
-  #lgtm_loki-data:
-  #  external: true
-  #lgtm_tempo-data:
-  #  external: true
-  #lgtm_mimir-data:
-  #  external: true
-  #lgtm_grafana-data:
-  #  external: true
   headscale_data:
     external: true
   life-queue_vikunja-data:

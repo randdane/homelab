@@ -26,14 +26,11 @@ they reserve nothing.
 3004:3001 uptime-kuma
 3005:3000 invidious
 127.0.0.1:3006:3000 karakeep
-3007:3000 lgtm-grafana
 3333:3333 ghostfolio
 HOMELAB_HOST:3389:3389 authentik-ldap
 127.0.0.1:3456:3456 life-queue-app
 3478:3478/udp headscale
 HOMELAB_HOST:4242:4242/udp crowdsec
-4317:4317 lgtm-otel-collector
-4318:4318 lgtm-otel-collector
 4533:4533 navidrome
 5001:5001 dockge
 5055:5055 arr-jellyseerr

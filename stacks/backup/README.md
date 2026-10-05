@@ -138,12 +138,12 @@ volume to be backed up.
 ## Restore
 
     ARCHIVE="${XDG_STATE_HOME:-$HOME/.local/state}/homelab/backups"
-    docker run --rm -v lgtm_grafana-data:/target -v "$ARCHIVE":/archive \
-      alpine sh -c "tar -xzf /archive/<file>.tar.gz -C /target --strip-components=2 backup/lgtm-grafana"
+    docker run --rm -v mealie_data:/target -v "$ARCHIVE":/archive \
+      alpine sh -c "tar -xzf /archive/<file>.tar.gz -C /target --strip-components=2 backup/mealie"
 
 Inspect the archive first: `tar -tzf <file>.tar.gz | head`.
 
-The selector above (`backup/lgtm-grafana`, no leading slash) is correct for
+The selector above (`backup/mealie`, no leading slash) is correct for
 the command as written, because it always runs inside the `alpine` image,
 whose busybox tar strips the leading `/` from stored member names *before*
 matching. Verified: extracting into a throwaway volume and inspecting its
@@ -154,7 +154,7 @@ directly on a server without docker) the selector needs a leading slash --
 GNU tar matches against the raw stored name, slash included, and only strips
 it afterward when writing files to disk:
 
-    tar -xzf <file>.tar.gz -C /some/target --strip-components=2 /backup/lgtm-grafana
+    tar -xzf <file>.tar.gz -C /some/target --strip-components=2 /backup/mealie
 
 Also verified by extraction. The two tools disagree on this, so copy the
 selector that matches whichever tar you are actually running, not the other

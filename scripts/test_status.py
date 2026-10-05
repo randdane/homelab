@@ -1225,7 +1225,7 @@ def test_capture_says_out_loud_what_it_repaired(tmp_path, capsys, monkeypatch):
     -- the promise was in a commit message and a docstring, and nowhere that
     would fail.
     """
-    # A real stack name, so capture() walks it: lgtm is `planned` and has
+    # A real stack name, so capture() walks it: wger is `planned` and has
     # never run here, which is exactly the shape that was contradicting
     # itself on the first server.
     # ONE record with TWO defects, which is what yesterday's cleanup script
@@ -1235,7 +1235,7 @@ def test_capture_says_out_loud_what_it_repaired(tmp_path, capsys, monkeypatch):
     state = status._skeleton()
     record = {k: v for k, v in status.SHAPE.items()
               if k != "first_observed_running"}
-    state["stacks"]["lgtm"] = {**record, "present": True,
+    state["stacks"]["wger"] = {**record, "present": True,
                                "last_seen_up": "2026-09-06T00:00:00Z"}
     path = tmp_path / "status.json"
     path.write_text(json.dumps(state))
@@ -1248,7 +1248,7 @@ def test_capture_says_out_loud_what_it_repaired(tmp_path, capsys, monkeypatch):
     # One record, not two, despite two repair messages.
     assert "repaired 1 state record" in err, err
     # And both defects are still reported, each naming the stack.
-    assert err.count("  lgtm: ") == 2, err
+    assert err.count("  wger: ") == 2, err
     assert "first_observed_running was missing" in err
     assert "2026-09-06T00:00:00Z" in err and "never run" in err
 
