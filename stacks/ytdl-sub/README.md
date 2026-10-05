@@ -43,7 +43,8 @@ image's default umask (022) does that.
 
 Then in Jellyfin: a **Shows** library on `/media/youtube`.
 
-And `cp .env.example .env` with `SITE_DIR` set; without it compose refuses
+And `cp .env.example .env && chmod 600 .env` with `SITE_DIR` set (status.py
+alerts on a looser mode); without it compose refuses
 to start.
 
 ## Running by hand
