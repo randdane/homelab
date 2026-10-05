@@ -1,7 +1,7 @@
 name: grocy
 
 x-homelab:
-  lifecycle: developing
+  lifecycle: production
   host: always-on
   exposure: lan
   data: precious
