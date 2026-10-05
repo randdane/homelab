@@ -45,7 +45,6 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 6881:6881/udp arr-gluetun
 7878:7878 arr-radarr
 8000:8000 paperless
-8001:8000 tubearchivist
 127.0.0.1:8010:8000 cup
 8080:80 it-tools
 8081:80 vaultwarden

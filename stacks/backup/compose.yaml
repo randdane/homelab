@@ -168,9 +168,6 @@ services:
       #- calibre_books:/backup/calibre-books:ro
       #- calibre_config:/backup/calibre-config:ro
       #- calibre_web-config:/backup/calibre-web-config:ro
-      # TubeArchivist's index: metadata, subtitles, watch state. The video
-      # library itself is excluded on size grounds -- see that stack's README.
-      #- tubearchivist_es:/backup/tubearchivist-es:ro
       # Invidious accounts and subscriptions.
       #- invidious_postgres-data:/backup/invidious-pg:ro
       # Hand-entered stock, purchase history, chores.
@@ -277,8 +274,6 @@ volumes:
   #calibre_config:
   #  external: true
   #calibre_web-config:
-  #  external: true
-  #tubearchivist_es:
   #  external: true
   #invidious_postgres-data:
   #  external: true

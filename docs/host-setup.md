@@ -244,18 +244,11 @@ that port to anything.
 
 ---
 
-## 4. Elasticsearch memory map limit — only if running TubeArchivist
+## 4. (retired) Elasticsearch memory map limit
 
-Elasticsearch refuses to start below the kernel default on most systems, and
-its failure is a bootstrap check in the container log, not a Docker error:
-
-```bash
-echo 'vm.max_map_count=262144' | sudo tee /etc/sysctl.d/99-elasticsearch.conf
-sudo sysctl --system
-```
-
-**Check:** `sysctl vm.max_map_count` → `262144`. TubeArchivist also wants
-several GB of RAM for Elasticsearch alone; it is the heaviest stack here.
+Only TubeArchivist needed it, and that stack was removed 2026-10-05 in favour
+of `stacks/ytdl-sub`, which has no database. No stack here runs
+Elasticsearch, so leave `vm.max_map_count` at the kernel default.
 
 ---
 
