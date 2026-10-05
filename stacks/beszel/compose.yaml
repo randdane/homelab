@@ -29,8 +29,14 @@ services:
       # /beszel_socket/beszel.sock.
       - socket:/beszel_socket
     networks:
-      - default
-      - edge
+      default:
+      # Default route via `edge`, so the OIDC token request reaches Caddy from
+      # this container's own edge address. Docker otherwise picks the gateway
+      # by network name, `beszel_default` sorts first, and the request arrives
+      # SNAT'd as 10.201.7.1 -- which @authentik_oidc_internal refuses, so SSO
+      # fails with a bare 400 and no token request in Authentik's log.
+      edge:
+        gw_priority: 1
     labels:
       homepage.group: Ops
       homepage.name: Beszel
