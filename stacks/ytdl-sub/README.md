@@ -43,12 +43,19 @@ image's default umask (022) does that.
 
 Then in Jellyfin: a **Shows** library on `/media/youtube`.
 
+And `cp .env.example .env` with `SITE_DIR` set; without it compose refuses
+to start.
+
 ## Running by hand
 
 ```bash
 docker compose run --rm -w /tmp --user 1000:1000 --entrypoint ytdl-sub ytdl-sub \
   --dry-run --config /ytdl/config.yaml sub /ytdl-site/subscriptions.yaml
 ```
+
+A dry run is slow, not stuck: throttle protection sleeps ~20 s per video
+even with `--dry-run`. Don't wrap it in `timeout` — that kills the client and
+leaves the `run` container going.
 
 `-w /tmp` matters: the default workdir `/config` is root-owned in a fresh
 volume, and ytdl-sub puts its lock file in the working directory
@@ -68,3 +75,11 @@ Scheduled runs log to `docker logs ytdl-sub`.
 ## Unverified
 
 - A real download on `homelab`, and Jellyfin picking up the library.
+
+## STATUS
+
+2026-10-05. Deployed on `homelab`: virtiofs mounted, stack up, first real
+run (`ytdl-sub-firstrun`) downloading — 18/37 Theo videos, 2.3 GB, one
+transient 403 retried fine. Files verified readable as `jellyfin` in CT 102.
+Blocked on owner: add the Jellyfin **Shows** library on `/media/youtube`.
+Then: remove this block and the "Unverified" section.
