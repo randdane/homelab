@@ -1,0 +1,27 @@
+# Beszel agent on the Proxmox host: real CPU, temperatures, tank and the NVMe,
+# which VM 101 cannot see. Connects OUT to the hub over a WebSocket
+# (HUB_URL + TOKEN), so pve opens no listening port.
+# Installed by hand on pve; see stacks/beszel/README.md.
+[Unit]
+Description=Beszel agent (pve)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# KEY=<hub public key>  TOKEN=<from Add system>  HUB_URL=https://beszel.<domain>
+# root-only, not in git
+EnvironmentFile=/etc/homelab/beszel-agent.env
+ExecStart=/usr/local/bin/beszel-agent
+Restart=on-failure
+RestartSec=10
+# Nothing it reads needs root: /proc, /sys sensors, ZFS kstats. SMART stays
+# with smartd (docs/smart.md), so the agent is not given disk access.
+DynamicUser=yes
+StateDirectory=beszel-agent
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -23,6 +23,14 @@ The `homelab` agent reads Docker through `beszel-socket-proxy`
 (`CONTAINERS`, `VERSION`, `POST=0`), published on `127.0.0.1:2377` because a
 host-network container cannot resolve container names.
 
+## `pve` agent
+
+`scripts/systemd/pve-beszel-agent.service`, installed by hand: the v0.21.0
+static binary (checksum-verified against the release's
+`beszel_0.21.0_checksums.txt`) at `/usr/local/bin/beszel-agent`, secrets in
+root-only `/etc/homelab/beszel-agent.env`. It runs as a systemd
+`DynamicUser`, so it has no root and no disk access. SMART on `pve` stays with `smartd`.
+
 ## First deploy
 
 `BESZEL_KEY` cannot exist until the hub has run, so:
