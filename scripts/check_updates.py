@@ -688,13 +688,10 @@ def main():
                   "stacks/jellyfin/compose.yaml as for any image below.",
                   file=sys.stderr)
         else:
-            print("  Read the release notes, then on pve (snapshot first -- "
-                  "rollback also undoes\n  the database migration):\n"
-                  "       pct snapshot <id> pre-<ver>\n"
-                  "       pct exec <id> -- sh -c 'apt-get update && apt-mark "
-                  "unhold jellyfin &&\n"
-                  "         apt-get install -y jellyfin=<ver>* && apt-mark hold "
-                  "jellyfin'", file=sys.stderr)
+            print("  Read the release notes, then follow \"The version is "
+                  "held\" in\n  stacks/jellyfin/README.md: vzdump first (the "
+                  "bind mount rules out\n  pct snapshot), and on a major "
+                  "version swap the LDAP plugin too.", file=sys.stderr)
 
     for reference, stack, _ in others if args.all else []:
         print(f"  (not alerting) {stack}: {reference}", file=sys.stderr)

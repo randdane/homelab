@@ -22,18 +22,29 @@ switches `scripts/check_updates.py` from the pinned tag to asking the LXC.
 | LDAP | Authentik's outpost, published on `<HOMELAB_HOST>:3389` for the LXC only (`$SITE_DIR/pve/firewall/101.fw`) |
 | CrowdSec | rsyslog in the CT forwards the `jellyfin` program to udp `<HOMELAB_HOST>:4242`; `stacks/crowdsec/config/acquis.d` |
 | Backup | `vzdump` of CT 102, not the `backup` stack |
-| Updates | `apt-mark hold`; security-only unattended upgrades; upgrade by hand after `pct snapshot 102 pre-<ver>` |
+| Updates | `apt-mark hold`; security-only unattended upgrades; upgrade by hand after a `vzdump` of CT 102 |
 
 **The version is held.** Jellyfin migrates its library database on startup and
-does not migrate back. Upgrade by hand, snapshot first — `pct rollback` undoes
-the migration too:
+does not migrate back. Upgrade by hand, backup first. **Not `pct snapshot`**:
+the `/tank/media` bind mount makes the CT unsnapshottable, so `vzdump` is the
+only rollback (it skips the bind mount, so it is small and takes ~15 s):
 
 ```bash
-pct snapshot 102 pre-<ver>
-pct exec 102 -- sh -c 'apt-get update && apt-mark unhold jellyfin-server jellyfin-web &&
-  apt-get install -y jellyfin-server=<ver>+deb13 jellyfin-web=<ver>+deb13 &&
-  apt-mark hold jellyfin-server jellyfin-web'
+vzdump 102 --storage tank-backups --mode stop --compress zstd --notes-template pre-<ver>
+pct exec 102 -- sh -c 'systemctl stop jellyfin && apt-get update &&
+  apt-mark unhold jellyfin-server jellyfin-web jellyfin-ffmpeg8 &&
+  apt-get install -y jellyfin-server=<ver>+deb13 jellyfin-web=<ver>+deb13 jellyfin-ffmpeg8 &&
+  apt-mark hold jellyfin-server jellyfin-web jellyfin-ffmpeg8'
 ```
+
+**On a major version, swap the LDAP plugin before the first start.** Jellyfin
+disables a plugin whose `targetAbi` is too old, and LDAP is how everyone but
+the admin signs in. Move `/config/plugins/LDAP-Auth_<old>` aside, unpack the
+matching release into `/config/plugins/LDAP-Auth_<new>` (owned `jellyfin`),
+and bump `VERSION`/`CHECKSUM` in `install_ldap_plugin.sh` to match. The
+config, `/config/plugins/configurations/LDAP-Auth.xml`, is separate and
+survives. Done this way for 10.11.11 → 12.2 on 2026-10-05: v23 → v24, with
+`jellyfin-ffmpeg7` → `jellyfin-ffmpeg8`, which 12.x recommends.
 
 **Helpers, all run on `pve` as root:** `set_known_proxies.sh`, `set_logging.sh`,
 and `install_ldap_plugin.sh` (rebuild only — it rewrites `LDAP-Auth.xml`

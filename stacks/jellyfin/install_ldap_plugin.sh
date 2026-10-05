@@ -12,8 +12,8 @@
 # Idempotent.
 set -euo pipefail
 
-VERSION="23.0.0.0"
-CHECKSUM="e67eda7dd1b91a71315bd6620c8b03f1"   # from repo.jellyfin.org manifest
+VERSION="24.0.0.0"   # targetAbi 12.0; v23 was the last for 10.11
+CHECKSUM="1e34d0e48336187922622c35d938380c"   # from repo.jellyfin.org manifest
 URL="https://repo.jellyfin.org/files/plugin/ldap-authentication/ldap-authentication_${VERSION}.zip"
 ENV_FILE="${ENV_FILE:?set ENV_FILE to a copy of stacks/authentik/.env}"
 CT="${CT:-102}"
