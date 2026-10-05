@@ -117,9 +117,9 @@ services:
       #- immich_upload:/backup/immich-upload:ro
       #- immich_db-data:/backup/immich-pg:ro
       # Paperless: originals, search index, and metadata -- all three.
-      #- paperless_media:/backup/paperless-media:ro
-      #- paperless_data:/backup/paperless-data:ro
-      #- paperless_pg-data:/backup/paperless-pg:ro
+      - paperless_media:/backup/paperless-media:ro
+      - paperless_data:/backup/paperless-data:ro
+      - paperless_pg-data:/backup/paperless-pg:ro
       # ownCloud: file contents on disk, all metadata in MariaDB.
       #- owncloud_files:/backup/owncloud-files:ro
       #- owncloud_mysql:/backup/owncloud-mysql:ro
@@ -209,12 +209,12 @@ volumes:
   #  external: true
   #immich_db-data:
   #  external: true
-  #paperless_media:
-  #  external: true
-  #paperless_data:
-  #  external: true
-  #paperless_pg-data:
-  #  external: true
+  paperless_media:
+    external: true
+  paperless_data:
+    external: true
+  paperless_pg-data:
+    external: true
   #owncloud_files:
   #  external: true
   #owncloud_mysql:

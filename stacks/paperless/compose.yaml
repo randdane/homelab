@@ -1,12 +1,12 @@
 name: paperless
 
 x-homelab:
-  lifecycle: planned
-  host: server
+  lifecycle: developing
+  host: always-on
   exposure: lan
   data: precious
   purpose: Scanned documents, OCR'd and searchable -- the paper filing cabinet
-  prerequisites: PAPERLESS_DB_PASSWORD and PAPERLESS_SECRET_KEY in .env
+  prerequisites: PAPERLESS_DB_PASSWORD, PAPERLESS_SECRET_KEY and PUBLIC_DOMAIN in .env
   description: paperless-ngx with Postgres, Redis, Tika and Gotenberg for Office documents
 
 services:
@@ -43,7 +43,7 @@ services:
 
   webserver:
     image: ghcr.io/paperless-ngx/paperless-ngx:3.0.5
-    container_name: paperless
+    container_name: paperless-webserver
     restart: unless-stopped
     depends_on:
       db:
@@ -63,25 +63,43 @@ services:
       # Django signs sessions with this. Changing it logs everyone out;
       # leaving it at a default would let anyone forge a session cookie.
       - PAPERLESS_SECRET_KEY=${PAPERLESS_SECRET_KEY:?set PAPERLESS_SECRET_KEY in .env}
-      - PAPERLESS_URL=${PAPERLESS_URL:-http://localhost:8000}
+      # The vhost. Django derives ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS from
+      # it, so a wrong value shows up as "CSRF verification failed" on login.
+      # Laptop testing only: PAPERLESS_URL=http://localhost:8000
+      - PAPERLESS_URL=${PAPERLESS_URL:-https://paperless.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}}
+      # SSO through Authentik (README). PAPERLESS_APPS blank in .env leaves
+      # allauth's OIDC app uninstalled, so the provider JSON is ignored and the
+      # laptop runs without a client. Password login stays as break-glass.
+      - PAPERLESS_APPS=${PAPERLESS_APPS:-}
+      - 'PAPERLESS_SOCIALACCOUNT_PROVIDERS={"openid_connect":{"APPS":[{"provider_id":"authentik","name":"Authentik","client_id":"${OIDC_CLIENT_ID:-}","secret":"${OIDC_CLIENT_SECRET:-}","settings":{"server_url":"https://authentik.${PUBLIC_DOMAIN}/application/o/paperless/.well-known/openid-configuration"}}]}}'
+      # Upstream defaults this to yes: anyone Authentik admits would get an
+      # account. Off, so SSO only logs in to an account you connected
+      # yourself (Profile -> Connect, README).
+      - PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS=false
       - PAPERLESS_OCR_LANGUAGE=${PAPERLESS_OCR_LANGUAGE:-eng}
       - PAPERLESS_TIKA_ENABLED=1
       - PAPERLESS_TIKA_GOTENBERG_ENDPOINT=http://gotenberg:3000
       - PAPERLESS_TIKA_ENDPOINT=http://tika:9998
       - USERMAP_UID=${PUID:-1000}
       - USERMAP_GID=${PGID:-1000}
+    # Loopback only: the vhost is the way in, this is break-glass over ssh.
     ports:
-      - "${PORT:-8000}:8000"
+      - "127.0.0.1:${PORT:-8000}:8000"
     volumes:
       - data:/usr/src/paperless/data
       - media:/usr/src/paperless/media
       - export:/usr/src/paperless/export
       - consume:/usr/src/paperless/consume
+    # Joins `edge` so Caddy can reach it by container name for the
+    # paperless.<PUBLIC_DOMAIN> vhost.
+    networks:
+      - default
+      - edge
     labels:
       homepage.group: Files
       homepage.name: Paperless
       homepage.description: Searchable archive of every scanned document
-      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-8000}
+      homepage.href: https://paperless.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
       homepage.icon: paperless
       docker-volume-backup.stop-during-backup: "true"
     # No healthcheck block: the image already ships one.
@@ -102,6 +120,10 @@ services:
     image: apache/tika:latest
     container_name: paperless-tika
     restart: unless-stopped
+
+networks:
+  edge:
+    external: true
 
 volumes:
   # The document originals and the search index. Losing these means
