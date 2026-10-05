@@ -1,7 +1,7 @@
 name: beszel
 
 x-homelab:
-  lifecycle: developing
+  lifecycle: production
   host: always-on
   exposure: lan
   # Metric history and alert settings. Losing them costs the trend lines and
