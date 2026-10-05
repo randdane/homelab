@@ -60,6 +60,10 @@ services:
       - KEY=${BESZEL_KEY:-}
       # Through the read-only proxy below, never the raw socket.
       - DOCKER_HOST=tcp://127.0.0.1:${PROXY_PORT:-2377}
+      # Its image-update check inspects every image (GET /images/*/json) and
+      # compares registry digests -- cup's job here already, so off rather
+      # than widening the proxy.
+      - DOCKER_IMAGE_CHECK=false
     volumes:
       - agent-data:/var/lib/beszel-agent
       - socket:/beszel_socket
@@ -80,8 +84,10 @@ services:
     environment:
       # The setting that makes this read-only.
       - POST=0
-      # The agent reads /containers/json and /containers/<id>/stats (agent/docker.go, v0.21.0).
+      # The agent reads /containers/json and /containers/<id>/stats, and
+      # /info for the host's OS details (agent/docker.go, v0.21.0).
       - CONTAINERS=1
+      - INFO=1
       - VERSION=1
       # Explicitly denied. Each of these grants host takeover on its own,
       # and some have GET forms that POST=0 would not stop.
