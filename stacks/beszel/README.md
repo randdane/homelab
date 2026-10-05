@@ -36,6 +36,30 @@ All env names were read from the v0.21.0 source (`agent/utils/utils.go`,
 `internal/migrations/initial-settings.go`); both accept a `BESZEL_AGENT_` /
 `BESZEL_HUB_` prefix.
 
+## SSO (Authentik, native OIDC)
+
+PocketBase's OAuth2, configured in the admin panel at `/_/` (Collections →
+`users` → Options → OAuth2 → OpenID Connect), not in env. Authentik provider
+`beszel`, group `beszel-users`, redirect
+`https://beszel.<PUBLIC_DOMAIN>/api/oauth2-redirect`. `USER_CREATION` is unset,
+so an SSO login only links to an existing account with the same email.
+Password login stays as break-glass.
+
+Two failures on the way, both silent in the UI (a blank page):
+
+- **400, and no token request in Authentik's log.** The hub sat on
+  `beszel_default` and `edge`, Docker picks the default route by network
+  name, and `beszel_default` sorts before `edge` — so the token request
+  arrived SNAT'd as `10.201.7.1`, which `@authentik_oidc_internal` refuses.
+  Fixed with `gw_priority: 1` on `edge`. Only a stack named before `edge`
+  hits this.
+- **403 after a 200 token exchange.** PocketBase v0.40.4 drops the email
+  unless `email_verified` is true (`tools/auth/oidc.go`), so it could not
+  match the account and would not create one. The provider uses
+  `homelab: email (admin-verified)`.
+
+Verified 2026-10-05: one user, one `oidc` external auth, `auth-with-oauth2` 200.
+
 ## What will bite you
 
 - **`data` is backed up; `agent-data` and `socket` are not.** Losing the

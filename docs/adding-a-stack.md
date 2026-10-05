@@ -145,11 +145,14 @@ does this step through the API; nothing here needs the admin UI.
       explicitly**: via the API it defaults to `[]`, and the only error is
       "The request is otherwise malformed"
 - [ ] Linking by email: if the app requires `email_verified` (Mealie,
-      Vikunja), use the Authentik mapping `homelab: email (admin-verified)`
+      Vikunja, anything on PocketBase such as Beszel), use the Authentik mapping `homelab: email (admin-verified)`
       in place of the stock email mapping, which always sends `false`.
       Otherwise the app refuses the login or silently creates a second user
 - [ ] The UI service is on `edge`, so its backend reaches Authentik through
-      `@authentik_oidc_internal`; nothing to add to Caddy
+      `@authentik_oidc_internal`; nothing to add to Caddy. **If the stack's
+      name sorts before `edge`** (`beszel`, `authentik`…), its default route
+      is its own bridge and the request arrives SNAT'd as the refused
+      gateway: give `edge` `gw_priority: 1` (see `stacks/beszel/compose.yaml`)
 - [ ] Client ID and secret straight into the host's `.env` (never printed);
       blank-by-default variables in compose, entries in `.env.example`.
       No domain literal in committed config (`test_identity_leak.py`)
