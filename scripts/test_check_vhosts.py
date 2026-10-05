@@ -247,3 +247,10 @@ def test_a_two_name_one_line_matcher_yields_both_hosts():
 def test_a_two_name_braced_matcher_yields_both_hosts():
     hosts = caddy_hosts(TWO_NAME_MATCHER_BRACED)
     assert hosts == {"a.example": True, "b.example": True}
+
+
+def test_a_hyphenated_matcher_name_is_read_with_its_gate():
+    """`@it-tools` is a valid Caddy matcher. Matching names with `\\w+` alone
+    skipped the block entirely, so a gated host read as missing."""
+    text = TWO_NAME_MATCHER_BRACED.replace("@both", "@it-tools")
+    assert caddy_hosts(text) == {"a.example": True, "b.example": True}

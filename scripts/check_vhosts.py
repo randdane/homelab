@@ -81,9 +81,9 @@ def matcher_hosts(body):
     for raw in body.splitlines():
         line = _uncomment(raw)
         if current is None:
-            if re.match(r"^\s*@\w+\s*\{\s*$", line):
+            if re.match(r"^\s*@[\w-]+\s*\{\s*$", line):
                 current, depth = [], 1
-            elif (m := re.match(r"^\s*@\w+\s+host\s+(\S.*?)\s*$", line)):
+            elif (m := re.match(r"^\s*@[\w-]+\s+host\s+(\S.*?)\s*$", line)):
                 for host in m.group(1).split():
                     out[host] = False   # a matcher on one line carries no gate
             continue
@@ -142,6 +142,7 @@ PHONE_PROBES = (
     "authentik.{$PUBLIC_DOMAIN}",
     "forgejo.{$PUBLIC_DOMAIN}",
     "homepage.{$PUBLIC_DOMAIN}",
+    "it-tools.{$PUBLIC_DOMAIN}",
     "karakeep.{$PUBLIC_DOMAIN}",
     "kuma.{$PUBLIC_DOMAIN}",
     "mealie.{$PUBLIC_DOMAIN}",

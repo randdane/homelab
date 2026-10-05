@@ -1,12 +1,12 @@
 name: it-tools
 
 x-homelab:
-  lifecycle: planned
-  host: both
+  lifecycle: developing
+  host: always-on
   exposure: lan
   data: none
   purpose: Offline dev toolbox -- JSON, base64, JWT, hashes, cron, UUIDs
-  prerequisites: none
+  prerequisites: PUBLIC_DOMAIN in .env
   description: Stateless; nothing to back up and nothing to lose
 
 services:
@@ -16,13 +16,19 @@ services:
     restart: unless-stopped
     environment:
       - TZ=${TZ:-America/Chicago}
+    # Loopback only: the vhost is the way in, this is break-glass over ssh.
     ports:
-      - "${PORT:-8080}:80"
+      - "127.0.0.1:${PORT:-8080}:80"
+    # Joins `edge` so Caddy can reach it by container name for the
+    # it-tools.<PUBLIC_DOMAIN> vhost.
+    networks:
+      - default
+      - edge
     labels:
       homepage.group: Ops
       homepage.name: IT-Tools
       homepage.description: Encoders, converters, and generators, offline
-      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-8080}
+      homepage.href: https://it-tools.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
       homepage.icon: it-tools
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:80/ || exit 1"]
@@ -30,3 +36,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+networks:
+  edge:
+    external: true

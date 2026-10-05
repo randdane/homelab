@@ -46,7 +46,7 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 7878:7878 arr-radarr
 127.0.0.1:8000:8000 paperless-webserver
 127.0.0.1:8010:8000 cup
-8080:80 it-tools
+127.0.0.1:8080:80 it-tools
 8081:80 vaultwarden
 8082:8082 arr-gluetun
 8085:3001 myfin-api
