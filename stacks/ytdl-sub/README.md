@@ -71,15 +71,3 @@ Scheduled runs log to `docker logs ytdl-sub`.
 - **Not monitored.** No healthcheck (no HTTP to probe) and no Kuma monitor.
   A run that fails every night is visible only in the container log.
 - **No Authentik**: there is no UI to put it in front of (§0 "neither").
-
-## Unverified
-
-- A real download on `homelab`, and Jellyfin picking up the library.
-
-## STATUS
-
-2026-10-05. Deployed on `homelab`: virtiofs mounted, stack up, first real
-run (`ytdl-sub-firstrun`) downloading — 18/37 Theo videos, 2.3 GB, one
-transient 403 retried fine. Files verified readable as `jellyfin` in CT 102.
-Blocked on owner: add the Jellyfin **Shows** library on `/media/youtube`.
-Then: remove this block and the "Unverified" section.
