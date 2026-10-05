@@ -18,7 +18,7 @@ services:
     # `docker compose up` does not rebuild on every start.
     build:
       context: .
-    image: homelab/caddy-crowdsec:2.11.4
+    image: homelab/caddy-crowdsec:2.11.7
     container_name: caddy
     restart: unless-stopped
     # The repo-wide .env, not this stack's -- PUBLIC_DOMAIN and DUCKDNS_HOST
