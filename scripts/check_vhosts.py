@@ -142,6 +142,7 @@ PHONE_PROBES = (
     "authentik.{$PUBLIC_DOMAIN}",
     "beszel.{$PUBLIC_DOMAIN}",
     "forgejo.{$PUBLIC_DOMAIN}",
+    "grocy.{$PUBLIC_DOMAIN}",
     "homepage.{$PUBLIC_DOMAIN}",
     "it-tools.{$PUBLIC_DOMAIN}",
     "karakeep.{$PUBLIC_DOMAIN}",

@@ -54,7 +54,7 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 8089:8083 calibre-web
 127.0.0.1:8090:8080 dozzle
 8091:80 pihole
-8092:80 grocy
+127.0.0.1:8092:80 grocy
 8093:80 wger-nginx
 127.0.0.1:8094:8090 beszel-hub
 8095:8080 owncloud

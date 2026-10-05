@@ -332,6 +332,28 @@ jellyfin.{$DUCKDNS_HOST} {
 		reverse_proxy it-tools:80
 	}
 
+	# Grocy: browser and the Android app. The web UI is behind Authentik
+	# forward-auth and Grocy trusts the X-Authentik-Username it copies in. The
+	# app authenticates with a GROCY-API-KEY and cannot do a browser login, so
+	# /api/* skips forward-auth -- and MUST strip that header, or anyone inside
+	# the remote_ip gate could send it and be logged in as any user. Grocy
+	# checks the API key before the header, so a stripped request without a
+	# valid key is refused.
+	@grocy {
+		host grocy.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @grocy {
+		route /api/* {
+			request_header -X-Authentik-Username
+			reverse_proxy grocy:80
+		}
+		route {
+			import authentik_forward_auth
+			reverse_proxy grocy:80
+		}
+	}
+
 	@beszel {
 		host beszel.{$PUBLIC_DOMAIN}
 		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1

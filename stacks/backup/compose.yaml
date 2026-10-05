@@ -169,7 +169,7 @@ services:
       # Invidious accounts and subscriptions.
       #- invidious_postgres-data:/backup/invidious-pg:ro
       # Hand-entered stock, purchase history, chores.
-      #- grocy_config:/backup/grocy:ro
+      - grocy_config:/backup/grocy:ro
       # Training history and uploaded exercise images.
       #- wger_pg-data:/backup/wger-pg:ro
       #- wger_media:/backup/wger-media:ro
@@ -269,8 +269,8 @@ volumes:
   #  external: true
   #invidious_postgres-data:
   #  external: true
-  #grocy_config:
-  #  external: true
+  grocy_config:
+    external: true
   #wger_pg-data:
   #  external: true
   #wger_media:
