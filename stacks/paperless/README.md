@@ -61,3 +61,12 @@ login only works for an account that already has Authentik connected:
 
 That also sidesteps Authentik's stock email mapping sending
 `email_verified: false`. Password login stays enabled as break-glass.
+
+Clicking **Authentik** before step 2 gives "We are sorry, but the sign up is
+currently closed." That is the guard working, not a fault: no account is
+linked yet, and none is created.
+
+Verified 2026-10-05 from an incognito window: Authentik logged a
+`/application/o/token/` 200 from `paperless-webserver`'s `edge` address, and
+Paperless holds one user (`paperless`) with one `authentik` social account.
+Authentik group: `paperless-users`.
