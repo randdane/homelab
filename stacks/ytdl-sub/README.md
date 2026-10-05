@@ -67,7 +67,8 @@ Scheduled runs log to `docker logs ytdl-sub`.
 
 - **YouTube breaks yt-dlp** every few weeks. `UPDATE_YT_DLP_ON_START=stable`
   means `docker compose restart` is the fix; a newer image is the slower one.
-- **Nothing is backed up.** `tank` is one disk, and B2 does not take media.
+- **Nothing is backed up.** `tank` is a mirror, which survives a dead disk but
+  not a deleted file, and B2 does not take media.
   Only Recent keeps it small enough not to matter.
 - **Not monitored.** No healthcheck (no HTTP to probe) and no Kuma monitor.
   A run that fails every night is visible only in the container log.

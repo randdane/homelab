@@ -1,10 +1,10 @@
 # Disk health on `pve`
 
-Since the 2026-09-20 cutover everything lives on `pve`'s two physical disks:
+Since the 2026-09-20 cutover everything lives on `pve`'s physical disks:
 the 1 TB NVMe (root, VM 101 and CT 102 via `local-lvm`, so every stack, Headscale,
-the local archives and Duplicati's settings DB) and the single 6 TB HDD
-`tank`, which holds media. There is no redundancy on either yet (`tank`'s
-mirror is #38). `docs/recovery.md` covers what to do after a drive dies;
+the local archives and Duplicati's settings DB) and `tank`, which holds media —
+a two-way mirror of 6 TB HDDs since 2026-10-03. The NVMe has no redundancy;
+`tank` survives one dead disk. `docs/recovery.md` covers what to do after a drive dies;
 this page is what tells you *before*.
 
 Two halves, because they fail differently. Both run **on `pve`**, not in the
