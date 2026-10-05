@@ -18,6 +18,7 @@ they reserve nothing.
 443:443/udp caddy
 1337:1337 olivetin
 2283:2283 immich-server
+127.0.0.1:2377:2375 beszel-socket-proxy
 2586:80 ntfy
 3000:3000 flowise
 127.0.0.1:3001:3000 homepage
@@ -55,6 +56,7 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 8091:80 pihole
 8092:80 grocy
 8093:80 wger-nginx
+127.0.0.1:8094:8090 beszel-hub
 8095:8080 owncloud
 8123:8123 homeassistant
 127.0.0.1:8200:8200 duplicati

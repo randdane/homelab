@@ -332,6 +332,14 @@ jellyfin.{$DUCKDNS_HOST} {
 		reverse_proxy it-tools:80
 	}
 
+	@beszel {
+		host beszel.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @beszel {
+		reverse_proxy beszel-hub:8090
+	}
+
 	# Forgejo's web UI and HTTPS git. Its port 3002 is loopback-only on the
 	# host, so remotes must use this vhost; an ssh tunnel is the break-glass
 	# path when Caddy is down.

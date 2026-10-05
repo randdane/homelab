@@ -123,6 +123,8 @@ services:
       #- homeassistant_config:/backup/homeassistant:ro
       # Recipes, images, and the SQLite database.
       - mealie_data:/backup/mealie:ro
+      # Beszel: users, systems, alert rules and metric history.
+      - beszel_data:/backup/beszel:ro
       # arr: configs only -- indexers, API keys, quality profiles, requests.
       #- arr_gluetun-config:/backup/arr-gluetun:ro
       #- arr_qbittorrent-config:/backup/arr-qbittorrent:ro
@@ -210,6 +212,8 @@ volumes:
   #homeassistant_config:
   #  external: true
   mealie_data:
+    external: true
+  beszel_data:
     external: true
   #arr_gluetun-config:
   #  external: true

@@ -1,0 +1,116 @@
+name: beszel
+
+x-homelab:
+  lifecycle: developing
+  host: always-on
+  exposure: lan
+  # Metric history and alert settings. Losing them costs the trend lines and
+  # a few minutes of re-clicking; nothing irreplaceable.
+  data: replaceable
+  purpose: CPU, memory, disk, temperature and per-container history for homelab and pve, with threshold alerts
+  prerequisites: PUBLIC_DOMAIN in .env; BESZEL_KEY after the hub's first run (README)
+  description: Beszel hub plus a local agent; pve runs its own agent as a binary
+
+services:
+  hub:
+    image: henrygd/beszel:0.21.0
+    container_name: beszel-hub
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - APP_URL=https://beszel.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+    # Loopback only: the vhost is the way in, this is break-glass over ssh.
+    ports:
+      - "127.0.0.1:${PORT:-8094}:8090"
+    volumes:
+      - data:/beszel_data
+      # The local agent listens on a unix socket here instead of a TCP port,
+      # so nothing on the network can reach it. Added in the UI as host
+      # /beszel_socket/beszel.sock.
+      - socket:/beszel_socket
+    networks:
+      - default
+      - edge
+    labels:
+      homepage.group: Ops
+      homepage.name: Beszel
+      homepage.description: Host and container resource history
+      homepage.href: https://beszel.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      homepage.icon: beszel
+      docker-volume-backup.stop-during-backup: "true"
+    healthcheck:
+      test: ["CMD", "/beszel", "health", "--url", "http://localhost:8090"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  agent:
+    image: henrygd/beszel-agent:0.21.0
+    container_name: beszel-agent
+    restart: unless-stopped
+    # Host network so it reports the VM's own interfaces, not a bridge veth.
+    network_mode: host
+    environment:
+      - LISTEN=/beszel_socket/beszel.sock
+      # The hub's public key: the agent only answers a hub holding the
+      # matching private key. Shown in the hub's "Add system" dialog, so it
+      # cannot exist before the hub's first run: blank is allowed, and the
+      # first deploy starts `hub` alone (README).
+      - KEY=${BESZEL_KEY:-}
+      # Through the read-only proxy below, never the raw socket.
+      - DOCKER_HOST=tcp://127.0.0.1:${PROXY_PORT:-2377}
+    volumes:
+      - agent-data:/var/lib/beszel-agent
+      - socket:/beszel_socket
+    depends_on: [socket-proxy]
+    healthcheck:
+      test: ["CMD", "/agent", "health"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  socket-proxy:
+    # `:ro` on the docker socket restricts the FILE, not the Docker API.
+    # This proxy is what restricts it. See docs/lessons-learned.md §27.
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    container_name: beszel-socket-proxy
+    restart: unless-stopped
+    environment:
+      # The setting that makes this read-only.
+      - POST=0
+      # The agent reads /containers/json and /containers/<id>/stats (agent/docker.go, v0.21.0).
+      - CONTAINERS=1
+      - VERSION=1
+      # Explicitly denied. Each of these grants host takeover on its own,
+      # and some have GET forms that POST=0 would not stop.
+      - EXEC=0
+      - SECRETS=0
+      - CONFIGS=0
+      - SWARM=0
+      - NODES=0
+      - PLUGINS=0
+      - SYSTEM=0
+      - AUTH=0
+      - BUILD=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # The agent is on the host network, so it cannot resolve a container
+    # name; loopback is the narrowest place to publish this.
+    ports:
+      - "127.0.0.1:${PROXY_PORT:-2377}:2375"
+
+networks:
+  edge:
+    external: true
+
+volumes:
+  # Users, systems, alert rules and metric history (SQLite).
+  data:
+  socket:
+    labels:
+      homelab.backup: exclude  # a unix socket, recreated at start
+  agent-data:
+    labels:
+      homelab.backup: exclude  # agent fingerprint only; re-pairs if lost
