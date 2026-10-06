@@ -35,6 +35,7 @@
       ansible.builtin.command: qm status {{ tmpl_id }}
       register: tmpl
       changed_when: false
+      check_mode: false # reads only; --check skips commands, which read as "missing"
       failed_when: false
 
     - name: Template {{ tmpl_id }}
@@ -61,6 +62,7 @@
       ansible.builtin.command: qm status {{ hostvars[item].vmid }}
       register: vms
       changed_when: false
+      check_mode: false # reads only
       failed_when: false
       loop: "{{ groups.docker_vms }}"
 
@@ -115,6 +117,33 @@
         name: qemu-guest-agent
         state: started
 
+    # host-setup.md 1 -- before any container exists
+    # Before the install, so dockerd's first start reads it. Written after, a
+    # play that failed before handlers left dockerd on the defaults, and the
+    # rerun saw an unchanged file and never restarted it (kennel, 2026-10-06).
+    - name: /etc/docker exists
+      ansible.builtin.file:
+        path: /etc/docker
+        state: directory
+        mode: "0755"
+
+    - name: daemon.json
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: "0644"
+        content: |
+          {
+            "default-address-pools": [
+              { "base": "172.17.0.0/12", "size": 24 },
+              { "base": "10.201.0.0/16", "size": 24 }
+            ],
+            "userland-proxy": false,
+            "log-driver": "json-file",
+            "log-opts": { "max-size": "20m", "max-file": "5" },
+            "shutdown-timeout": 30
+          }
+      notify: Restart docker
+
     # host-setup.md 0
     - name: Docker apt repository
       ansible.builtin.deb822_repository:
@@ -141,25 +170,13 @@
         groups: docker
         append: true
 
-    # host-setup.md 1 -- before any container exists
-    - name: daemon.json
-      ansible.builtin.copy:
-        dest: /etc/docker/daemon.json
-        mode: "0644"
-        content: |
-          {
-            "default-address-pools": [
-              { "base": "172.17.0.0/12", "size": 24 },
-              { "base": "10.201.0.0/16", "size": 24 }
-            ],
-            "userland-proxy": false,
-            "log-driver": "json-file",
-            "log-opts": { "max-size": "20m", "max-file": "5" },
-            "shutdown-timeout": 30
-          }
-      notify: Restart docker
-
     # host-setup.md 14
+    - name: journald.conf.d exists (not on the cloud image)
+      ansible.builtin.file:
+        path: /etc/systemd/journald.conf.d
+        state: directory
+        mode: "0755"
+
     - name: Journal cap, as a drop-in rather than an edit of the packaged file
       ansible.builtin.copy:
         dest: /etc/systemd/journald.conf.d/homelab.conf
