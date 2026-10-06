@@ -18,6 +18,18 @@ all:
           vm_memory: 12288
           vm_disk: 64G
           homelab_host: homelab
+    agent_vms:
+      hosts:
+        agents:
+          ansible_host: 10.0.5.10
+          ansible_user: admin
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          vmid: 200
+          vm_cores: 4
+          vm_memory: 8192
+          vm_disk: 32G
+          vm_vlan: 5
+          vm_cpuunits: 50
   vars:
     homelab_repo: https://github.com/example/homelab.git
     ansible_ssh_common_args: -o IdentitiesOnly=yes

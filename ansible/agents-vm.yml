@@ -1,0 +1,233 @@
+# Build the AI agents VM on pve: an untrusted Docker host on its own VLAN,
+# internet only. Rerunnable; every step checks before it changes anything.
+#
+#   cd ansible
+#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" agents-vm.yml --check --diff   # dry run
+#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" agents-vm.yml
+#
+# First run stops after the clone: pin the printed MAC to the inventory address
+# on the router (Fixed IP), then rerun with -e fixed_ip=set. The VM is never
+# started without its firewall in place: the .fw file is deployed and read
+# back before the stop.
+#
+# NOT done here, on purpose:
+#   - the VLAN, dream's inter-VLAN block and Pi-hole's "permit all origins" --
+#     router and appliance config, by hand (devices.md)
+#   - template 9000 -- homelab-vm.yml builds it; this play only requires it
+#   - agent stacks, API keys -- secrets; the VM gets its own capped keys, never
+#     anything from sys76's token store
+#   - tailnet -- the VM is deliberately not a member
+
+- name: Agents VM on the Proxmox host
+  hosts: proxmox
+  vars:
+    tmpl_id: 9000
+    vm_name: "{{ groups.agent_vms | first }}"
+    vm: "{{ hostvars[vm_name] }}"
+    fw_src: "{{ inventory_dir }}/../pve/firewall/{{ vm.vmid }}.fw"
+  tasks:
+    - name: Template exists (built by homelab-vm.yml)
+      ansible.builtin.command: qm status {{ tmpl_id }}
+      changed_when: false
+      check_mode: false # reads only
+
+    - name: VLAN {{ vm.vm_vlan }} is allowed on vmbr0
+      ansible.builtin.command: bridge -j vlan show dev enp2s0
+      register: vlans
+      changed_when: false
+      check_mode: false # reads only
+      failed_when: vm.vm_vlan not in (vlans.stdout | from_json | map(attribute='vlans') | flatten | map(attribute='vlan'))
+
+    - name: Login key
+      ansible.builtin.copy:
+        src: "{{ vm.ansible_ssh_private_key_file }}.pub"
+        dest: "/root/{{ vm.ansible_ssh_private_key_file | basename }}.pub"
+        mode: "0644"
+
+    - name: Does the VM exist
+      ansible.builtin.command: qm status {{ vm.vmid }}
+      register: vm_status
+      changed_when: false
+      check_mode: false # reads only
+      failed_when: false
+
+    # Cloned stopped. firewall=1 on the NIC, tag on the NIC: the VM has no
+    # path to VLAN 1 at all, whatever it does inside.
+    - name: Clone {{ vm_name }}
+      when: vm_status.rc != 0
+      ansible.builtin.shell: |
+        set -euo pipefail
+        qm clone {{ tmpl_id }} {{ vm.vmid }} --name {{ vm_name }} --full
+        qm set {{ vm.vmid }} --cores {{ vm.vm_cores }} --memory {{ vm.vm_memory }} \
+          --cpuunits {{ vm.vm_cpuunits }} --onboot 1 --startup order=3 \
+          --net0 virtio,bridge=vmbr0,tag={{ vm.vm_vlan }},firewall=1 \
+          --ciuser {{ vm.ansible_user }} --ipconfig0 ip=dhcp \
+          --sshkeys /root/{{ vm.ansible_ssh_private_key_file | basename }}.pub
+        qm resize {{ vm.vmid }} scsi0 {{ vm.vm_disk }}
+      args:
+        executable: /bin/bash
+      register: cloned
+
+    # In a dry run the clone is skipped, so there is nothing to read back yet.
+    - name: Remember whether there is a VM to check
+      ansible.builtin.set_fact:
+        vm_exists: "{{ vm_status.rc == 0 or cloned is changed }}"
+
+    # pmxcfs refuses chmod and rename, so the copy module cannot write here
+    # (temp-file-and-rename, then unsafe_writes, both EPERM). A plain write,
+    # only when the content differs.
+    - name: Firewall rules now on pve
+      ansible.builtin.slurp:
+        src: /etc/pve/firewall/{{ vm.vmid }}.fw
+      register: fw_live
+      failed_when: false
+
+    - name: Firewall rules, written from the tracked file
+      vars:
+        fw_want: "{{ lookup('file', fw_src) }}\n"
+      when: (fw_live.content | default('') | b64decode) != fw_want
+      ansible.builtin.shell: cat >| /etc/pve/firewall/{{ vm.vmid }}.fw
+      args:
+        stdin: "{{ fw_want }}"
+        stdin_add_newline: false
+      diff: false
+      register: fw_written
+
+    # A parse error voids the whole file in silence, so read back what Proxmox
+    # actually loaded and compare it with the file, every run.
+    - name: What Proxmox loaded
+      ansible.builtin.command: >-
+        pvesh get /nodes/{{ inventory_hostname }}/qemu/{{ vm.vmid }}/firewall/{{ item }} --output-format json
+      loop: [options, rules, ipset/private]
+      register: fw_loaded
+      changed_when: false
+      check_mode: false
+      when: vm_exists
+
+    - name: Firewall loaded as written
+      vars:
+        fw_text: "{{ lookup('file', fw_src) }}"
+        opts: "{{ fw_loaded.results[0].stdout | from_json }}"
+        want_rules: "{{ fw_text | regex_findall('(?m)^(?:IN|OUT) ') | length }}"
+        want_ipset: "{{ fw_text | regex_search('(?s)\\[IPSET private\\]\\n(.*?)\\n\\n', '\\1') | first | regex_findall('(?m)^.+$') | length }}"
+      ansible.builtin.assert:
+        that:
+          - opts.enable | int == 1
+          - opts.policy_in == 'DROP'
+          - opts.dhcp | int == 1
+          - fw_loaded.results[1].stdout | from_json | length == want_rules | int
+          - fw_loaded.results[2].stdout | from_json | length == want_ipset | int
+        fail_msg: "{{ fw_src }} did not load as written; fix it before the VM starts"
+      when: vm_exists
+
+    # Every run: a NIC edited by hand to drop either would put the VM on the
+    # main LAN, or unfiltered, with nothing else to notice.
+    - name: The VM's NIC is tagged and filtered
+      ansible.builtin.shell: qm config {{ vm.vmid }} | grep '^net0'
+      register: net0
+      changed_when: false
+      check_mode: false
+      when: vm_exists
+      failed_when: >-
+        net0.rc != 0 or ',tag=' ~ vm.vm_vlan not in net0.stdout
+        or 'firewall=1' not in net0.stdout
+
+    # Not only on the run that clones: a first run that fails after the clone
+    # leaves a stopped VM, and the next run must not boot it unpinned either.
+    - name: New VM needs a Fixed IP before it boots
+      when: cloned is changed or ('stopped' in vm_status.stdout and fixed_ip | default('') != 'set')
+      ansible.builtin.fail:
+        msg: >-
+          Stopped, firewall in place: {{ net0.stdout | default('net0 unknown in a dry run') }}.
+          Pin that MAC to {{ vm.ansible_host }} on dream (Fixed IP), then rerun
+          with -e fixed_ip=set.
+
+    - name: VM running
+      ansible.builtin.command: qm start {{ vm.vmid }}
+      register: started
+      changed_when: started.rc == 0
+      failed_when: false
+
+- name: Docker inside the agents VM
+  hosts: agent_vms
+  become: true
+  tasks:
+    - name: Wait for ssh
+      ansible.builtin.wait_for_connection:
+        timeout: 180
+
+    - name: Base packages
+      ansible.builtin.apt:
+        name: [qemu-guest-agent, git, curl, ca-certificates]
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Guest agent running
+      ansible.builtin.service:
+        name: qemu-guest-agent
+        state: started
+
+    - name: Docker apt repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        uris: https://download.docker.com/linux/debian
+        suites: "{{ ansible_facts['distribution_release'] }}"
+        components: stable
+        architectures: amd64
+        signed_by: https://download.docker.com/linux/debian/gpg
+
+    - name: Docker
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
+        update_cache: true
+
+    - name: "{{ ansible_user }} in the docker group"
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: true
+
+    # no-new-privileges for every container: agent code cannot setuid its way
+    # to root inside a container. live-restore keeps agents up across a
+    # dockerd upgrade, which unattended-upgrades will do unasked.
+    - name: daemon.json
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: "0644"
+        content: |
+          {
+            "no-new-privileges": true,
+            "live-restore": true,
+            "userland-proxy": false,
+            "log-driver": "json-file",
+            "log-opts": { "max-size": "20m", "max-file": "5" }
+          }
+      notify: Restart docker
+
+    - name: Journal cap
+      ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf.d/homelab.conf
+        mode: "0644"
+        content: |
+          [Journal]
+          SystemMaxUse=500M
+          MaxRetentionSec=3month
+      notify: Restart journald
+
+  handlers:
+    - name: Restart docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted
+
+    - name: Restart journald
+      ansible.builtin.service:
+        name: systemd-journald
+        state: restarted
+
+# sshd, unattended-upgrades, sysctl -- the same checks homelab runs. Its
+# ip_forward = 1 is needed here too: Docker's bridge networking forwards.
+- name: Hardening
+  ansible.builtin.import_playbook: homelab-harden.yml
+  vars:
+    harden_hosts: agent_vms

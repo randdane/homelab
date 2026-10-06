@@ -15,7 +15,7 @@
 #   - uv, the Docker key and the cloud image -- those pins belong in homelab-vm.yml
 
 - name: Host hardening inside each VM
-  hosts: docker_vms
+  hosts: "{{ harden_hosts | default('docker_vms') }}"
   become: true
   tasks:
     # A drop-in, not an edit of the packaged file: Debian's sshd_config opens
