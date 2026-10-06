@@ -1,23 +1,22 @@
 name: immich
 
 # Adapted from the upstream release compose:
-# https://github.com/immich-app/immich/releases/latest/download/docker-compose.yml
-# The legacy definition was a single immich-server container with no database,
-# no Redis, no machine-learning service and no volumes -- it could never have
-# started. Do not "simplify" this back down.
+# https://github.com/immich-app/immich/releases/download/v3.2.4/docker-compose.yml
+# The four services are versioned together: bump IMMICH_VERSION only together
+# with the database and Valkey images from that release's compose.
 
 x-homelab:
-  lifecycle: planned
-  host: server
+  lifecycle: developing
+  host: always-on
   exposure: lan
   data: precious
   purpose: Photo and video library -- the replacement for a phone camera roll
-  prerequisites: DB_PASSWORD in .env; the database image must match the vector extension Immich expects
+  prerequisites: tank/photos shared into VM 101 over virtiofs at /mnt/photos (README); DB_PASSWORD and PUBLIC_DOMAIN in .env
   description: Server, machine-learning, Valkey, and a Postgres built with vectorchord
 
 services:
   immich-server:
-    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v3.1.0}
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v3.2.4}
     container_name: immich-server
     restart: unless-stopped
     environment:
@@ -27,11 +26,24 @@ services:
       - DB_DATABASE_NAME=${DB_DATABASE_NAME:-immich}
       - DB_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in .env}
       - REDIS_HOSTNAME=redis
+    # Loopback only: the vhost is the way in, this is break-glass over ssh.
     ports:
-      - "${PORT:-2283}:2283"
+      - "127.0.0.1:${PORT:-2283}:2283"
     volumes:
-      - upload:/data
+      # tank/photos on pve, over virtiofs (README). The bind is the
+      # `immich` SUBDIRECTORY, which exists only on the dataset: if the share
+      # is not mounted, the source is missing and compose refuses, instead of
+      # Immich initialising a library on the VM's 64 GB disk.
+      - type: bind
+        source: /mnt/photos/immich
+        target: /data
+        bind:
+          create_host_path: false
       - /etc/localtime:/etc/localtime:ro
+    # Joins `edge` so Caddy can reach it for the immich.<PUBLIC_DOMAIN> vhost.
+    networks:
+      - default
+      - edge
     depends_on:
       - redis
       - database
@@ -39,14 +51,13 @@ services:
       homepage.group: Files
       homepage.name: Immich
       homepage.description: Photos and videos, with search and face recognition
-      homepage.href: http://${HOMELAB_HOST:-localhost}:${PORT:-2283}
+      homepage.href: https://immich.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
       homepage.icon: immich
-      docker-volume-backup.stop-during-backup: "true"
     healthcheck:
       disable: false
 
   immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v3.1.0}
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v3.2.4}
     container_name: immich-machine-learning
     restart: unless-stopped
     environment:
@@ -57,21 +68,16 @@ services:
       disable: false
 
   redis:
-    image: valkey/valkey:9
+    image: docker.io/valkey/valkey:9@sha256:70739f85ad2ee01a726a965584a0f94895f01b0c60b3cc8b0aeef11eaa6888cf
     container_name: immich-redis
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+      test: redis-cli ping | grep -q PONG || exit 1
 
   database:
-    # Not an ordinary Postgres. Immich needs the vectorchord extension for
-    # search and face recognition, and the tag encodes the extension version.
-    # Substituting stock postgres gives a server that starts and then fails
-    # every search.
-    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
+    # Not an ordinary Postgres: the tag encodes the vector extensions Immich
+    # expects. Stock postgres starts, then fails every search.
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
     container_name: immich-postgres
     restart: unless-stopped
     environment:
@@ -88,11 +94,12 @@ services:
       disable: false
 
 volumes:
-  # The photo library itself. On the server this should become a bind mount
-  # to real storage -- see README.
-  upload:
   db-data:
   model-cache:
     labels:
       # Downloaded CLIP/face models, re-fetched automatically. Several GB.
       homelab.backup: exclude
+
+networks:
+  edge:
+    external: true

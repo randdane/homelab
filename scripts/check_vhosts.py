@@ -144,6 +144,7 @@ PHONE_PROBES = (
     "forgejo.{$PUBLIC_DOMAIN}",
     "grocy.{$PUBLIC_DOMAIN}",
     "homepage.{$PUBLIC_DOMAIN}",
+    "immich.{$PUBLIC_DOMAIN}",
     "it-tools.{$PUBLIC_DOMAIN}",
     "karakeep.{$PUBLIC_DOMAIN}",
     "kuma.{$PUBLIC_DOMAIN}",

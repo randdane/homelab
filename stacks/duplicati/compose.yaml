@@ -68,6 +68,16 @@ services:
       # than in the backup stack's BACKUP_EXCLUDE_REGEXP, where losing it
       # would put every previous tarball inside the next one.
       - ${XDG_STATE_HOME:-${HOME}/.local/state}/homelab:/source-state:ro
+      # Immich's library on tank/photos, over virtiofs (stacks/immich/README.md).
+      # create_host_path: false so a missing share stops Duplicati loudly. The
+      # alternative -- backing up an empty folder -- records every photo as
+      # deleted, and keep-time then expires them from B2.
+      - type: bind
+        source: /mnt/photos/immich
+        target: /source-photos
+        read_only: true
+        bind:
+          create_host_path: false
       # Only used for a local destination; remote destinations need none.
       - backups:/backups
     # `admin`, not `edge`, like dozzle and cup: only Caddy shares it, so no

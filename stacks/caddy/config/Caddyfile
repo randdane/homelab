@@ -354,6 +354,17 @@ jellyfin.{$DUCKDNS_HOST} {
 		}
 	}
 
+	# Immich. Its own login (Authentik OIDC, password login kept as the way
+	# in when Authentik is down), so no forward-auth. Phone uploads of
+	# multi-GB videos rely on Caddy setting no request_body limit.
+	@immich {
+		host immich.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @immich {
+		reverse_proxy immich-server:2283
+	}
+
 	@beszel {
 		host beszel.{$PUBLIC_DOMAIN}
 		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1

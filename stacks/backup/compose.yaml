@@ -109,9 +109,8 @@ services:
       #- vaultwarden_data:/backup/vaultwarden:ro
       # Play counts, ratings, playlists -- not regenerable by rescanning.
       #- navidrome_data:/backup/navidrome:ro
-      # Immich: files and database are useless without each other.
-      #- immich_upload:/backup/immich-upload:ro
-      #- immich_db-data:/backup/immich-pg:ro
+      # Immich's database. The photos themselves go to B2 through Duplicati (stacks/immich/README.md).
+      - immich_db-data:/backup/immich-pg:ro
       # Paperless: originals, search index, and metadata -- all three.
       - paperless_media:/backup/paperless-media:ro
       - paperless_data:/backup/paperless-data:ro
@@ -192,10 +191,8 @@ volumes:
   #  external: true
   #navidrome_data:
   #  external: true
-  #immich_upload:
-  #  external: true
-  #immich_db-data:
-  #  external: true
+  immich_db-data:
+    external: true
   paperless_media:
     external: true
   paperless_data:
