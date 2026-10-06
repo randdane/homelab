@@ -1,9 +1,11 @@
-# Build the AI agents VM on pve: an untrusted Docker host on its own VLAN,
-# internet only. Rerunnable; every step checks before it changes anything.
+# Build VM 200 `kennel` on pve: an untrusted guest for AI agents, on the
+# `agents` VLAN 5, internet only. Rerunnable; every step checks before it
+# changes anything. Homelab owns the VM, its NIC, its firewall and its
+# hardening; what runs inside is ~/Projects/_personal/kennel.
 #
 #   cd ansible
-#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" agents-vm.yml --check --diff   # dry run
-#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" agents-vm.yml
+#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" kennel-vm.yml --check --diff   # dry run
+#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" kennel-vm.yml
 #
 # First run stops after the clone: pin the printed MAC to the inventory address
 # on the router (Fixed IP), then rerun with -e fixed_ip=set. The VM is never
@@ -14,11 +16,11 @@
 #   - the VLAN, dream's inter-VLAN block and Pi-hole's "permit all origins" --
 #     router and appliance config, by hand (devices.md)
 #   - template 9000 -- homelab-vm.yml builds it; this play only requires it
-#   - agent stacks, API keys -- secrets; the VM gets its own capped keys, never
-#     anything from sys76's token store
+#   - Docker, agent stacks, API keys -- the kennel project; the VM gets its own
+#     capped keys, never anything from sys76's token store
 #   - tailnet -- the VM is deliberately not a member
 
-- name: Agents VM on the Proxmox host
+- name: kennel VM on the Proxmox host
   hosts: proxmox
   vars:
     tmpl_id: 9000
@@ -148,85 +150,10 @@
       changed_when: started.rc == 0
       failed_when: false
 
-- name: Docker inside the agents VM
-  hosts: agent_vms
-  become: true
-  tasks:
-    - name: Wait for ssh
-      ansible.builtin.wait_for_connection:
-        timeout: 180
-
-    - name: Base packages
-      ansible.builtin.apt:
-        name: [qemu-guest-agent, git, curl, ca-certificates]
-        update_cache: true
-        cache_valid_time: 3600
-
-    - name: Guest agent running
-      ansible.builtin.service:
-        name: qemu-guest-agent
-        state: started
-
-    - name: Docker apt repository
-      ansible.builtin.deb822_repository:
-        name: docker
-        uris: https://download.docker.com/linux/debian
-        suites: "{{ ansible_facts['distribution_release'] }}"
-        components: stable
-        architectures: amd64
-        signed_by: https://download.docker.com/linux/debian/gpg
-
-    - name: Docker
-      ansible.builtin.apt:
-        name: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
-        update_cache: true
-
-    - name: "{{ ansible_user }} in the docker group"
-      ansible.builtin.user:
-        name: "{{ ansible_user }}"
-        groups: docker
-        append: true
-
-    # no-new-privileges for every container: agent code cannot setuid its way
-    # to root inside a container. live-restore keeps agents up across a
-    # dockerd upgrade, which unattended-upgrades will do unasked.
-    - name: daemon.json
-      ansible.builtin.copy:
-        dest: /etc/docker/daemon.json
-        mode: "0644"
-        content: |
-          {
-            "no-new-privileges": true,
-            "live-restore": true,
-            "userland-proxy": false,
-            "log-driver": "json-file",
-            "log-opts": { "max-size": "20m", "max-file": "5" }
-          }
-      notify: Restart docker
-
-    - name: Journal cap
-      ansible.builtin.copy:
-        dest: /etc/systemd/journald.conf.d/homelab.conf
-        mode: "0644"
-        content: |
-          [Journal]
-          SystemMaxUse=500M
-          MaxRetentionSec=3month
-      notify: Restart journald
-
-  handlers:
-    - name: Restart docker
-      ansible.builtin.service:
-        name: docker
-        state: restarted
-
-    - name: Restart journald
-      ansible.builtin.service:
-        name: systemd-journald
-        state: restarted
-
 # sshd, unattended-upgrades, sysctl -- the same checks homelab runs. Its
-# ip_forward = 1 is needed here too: Docker's bridge networking forwards.
+# ip_forward = 1 is needed there too: kennel's Docker bridge networking forwards.
+# This is the end of homelab's side: a hardened VM. Docker and the agents are
+# ~/Projects/_personal/kennel's.
 - name: Hardening
   ansible.builtin.import_playbook: homelab-harden.yml
   vars:

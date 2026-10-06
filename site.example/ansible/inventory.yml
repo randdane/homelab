@@ -20,7 +20,7 @@ all:
           homelab_host: homelab
     agent_vms:
       hosts:
-        agents:
+        kennel:
           ansible_host: 10.0.5.10
           ansible_user: admin
           ansible_ssh_private_key_file: ~/.ssh/id_ed25519
