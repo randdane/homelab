@@ -47,7 +47,7 @@ survives. Done this way for 10.11.11 → 12.2 on 2026-10-05: v23 → v24, with
 `jellyfin-ffmpeg7` → `jellyfin-ffmpeg8`, which 12.x recommends.
 
 **Clients on another VLAN use the public name.** `102.fw` admits 8096 from
-the main VLAN only, so a TV on the IoT VLAN pointed at `192.168.1.12:8096`
+the main VLAN only, so a TV on the IoT VLAN pointed at `<JELLYFIN_HOST>:8096`
 fails with "Unable to connect to server" and leaves no trace in any log. Point
 it at `https://jellyfin.<PUBLIC_DOMAIN>` instead: it goes through Caddy and
 CrowdSec, and no firewall hole is needed.

@@ -6,6 +6,10 @@ step across devices.
 once they leave the laptop.
 **URL:** http://localhost:8095 (admin user from `.env`)
 
+
+**Undecided — revisit around 2026-10-19.** File sync is not needed yet, and
+Syncthing (peer-to-peer, no server, no web UI to secure) is the alternative to
+weigh against this. Whichever loses goes in `docs/declined-stacks.md`.
 ## Notes
 
 **The legacy definition was a single container with no database.** ownCloud

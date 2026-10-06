@@ -247,7 +247,7 @@ def observe_services(project):
             # liveness alone reads a crash-loop as healthy. See is_up().
             "status": state,
             "running": running == "true",
-            # RestartCount resets whenever Compose or Watchtower recreates the
+            # RestartCount resets whenever Compose recreates the
             # container, so this counts the current instance only.
             "restarts": int(restarts),
             "image": image,

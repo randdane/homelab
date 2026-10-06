@@ -151,7 +151,6 @@ services:
       # monitors are tedious to rebuild by hand; the history is the only
       # record of how often something has been flapping.
       - uptime-kuma_data:/backup/uptime-kuma:ro
-      #- pihole_pihole-data:/backup/pihole:ro
       # Bookmarks and their archived page snapshots.
       - karakeep_data:/backup/karakeep:ro
       # Every note revision the plugin has synced.
@@ -249,8 +248,6 @@ volumes:
     external: true
   uptime-kuma_data:
     external: true
-  #pihole_pihole-data:
-  #  external: true
   karakeep_data:
     external: true
   #obsidian-livesync_data:

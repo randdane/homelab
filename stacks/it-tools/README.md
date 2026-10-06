@@ -18,8 +18,7 @@ Stateless. No volumes, nothing to back up, nothing to lose. Delete and
 recreate freely.
 
 `:latest` is deliberate — there is no on-disk state to migrate, so an
-unattended update cannot break anything that a restart will not fix. This is a
-reasonable stack to include in Watchtower's label scope.
+unattended update cannot break anything that a restart will not fix.
 
 Chosen over OmniTools, which does the same job and was the less maintained of
 the two.

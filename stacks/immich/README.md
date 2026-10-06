@@ -37,5 +37,5 @@ holds albums, people, and the search index; the volume holds the files. A
 restore of one without the other is a broken library. `model-cache` is
 excluded — several GB of downloadable CLIP and face-detection models.
 
-**Do not put this in Watchtower's scope.** Immich runs schema migrations on
+**Upgrade by hand, never unattended.** Immich runs schema migrations on
 startup and the release notes regularly carry breaking changes.

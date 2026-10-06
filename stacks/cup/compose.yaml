@@ -7,7 +7,7 @@ x-homelab:
   data: none
   purpose: Tells you which images have updates, without updating anything
   prerequisites: none
-  description: The read-only half of update management; Watchtower is the half that acts
+  description: The read-only half of update management; a human bumping the pinned tag is the half that acts
 
 services:
   cup:

@@ -40,7 +40,7 @@ through. Do not publish this stack's ports directly to the internet; put
 Caddy in front.
 
 If an outpost ever needs managing, declare it in `compose.yaml` like `ldap`,
-or give the worker a scoped socket proxy (`stacks/dockge` has the pattern).
+or give the worker a scoped socket proxy (`stacks/crowdsec` has the pattern).
 A `:ro` socket mount is not a mitigation — Docker API requests are operations,
 not file writes.
 
@@ -56,9 +56,6 @@ branding.
 **Bootstrap is manual and easy to forget:** the initial admin account is
 created by visiting `/if/flow/initial-setup/` after first start. Until you do,
 the instance is unconfigured and open.
-
-**Never in Watchtower's scope.** Authentik migrates its schema on upgrade and
-ships breaking changes between releases.
 
 ## Postgres
 

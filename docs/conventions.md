@@ -215,9 +215,10 @@ for real recovery friction.
 Pin anything that migrates on-disk state: databases, Loki, Mimir, Immich.
 `:latest` is fine for stateless services.
 
-Watchtower updates images unattended. For a stateless service that is a
-feature. For one that performs a one-way on-disk schema migration at startup
-it is an unsupervised upgrade you cannot undo by pulling the old tag.
+Nothing updates images unattended: tags are bumped in this repo after Cup or
+`check_updates.py` reports them. An unattended updater turns a one-way schema
+migration at startup into an upgrade nobody chose and nobody can undo by
+pulling the old tag (`docs/declined-stacks.md`, Watchtower).
 
 ## Homepage labels
 
@@ -267,8 +268,7 @@ Two hosts, two paths, on purpose:
 
 `/opt` is root-owned by default, so the checkout is chowned to the human who
 runs compose (`sudo chown r:r /opt/homelab`); otherwise every `git pull` needs
-sudo and the tree ends up half root-owned. Keep clear of `/opt/stacks`, which
-`stacks/dockge` claims deliberately.
+sudo and the tree ends up half root-owned.
 
 Served data -- media libraries, anything a service hands to clients -- goes in
 `/srv` (FHS: "site-specific data served by this system"), never in a named

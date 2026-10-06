@@ -139,7 +139,7 @@ services:
     # discover, so the connection object does not come back.
     #
     # If an outpost ever does need managing, declare it in compose like `ldap`
-    # or give the worker a tightly scoped socket proxy (see stacks/dockge) --
+    # or give the worker a tightly scoped socket proxy (see stacks/crowdsec) --
     # do not hand it the socket again.
     user: root
     environment:

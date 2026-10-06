@@ -19,10 +19,8 @@ queries registries, so nothing is lost by denying it everything else, and the
 proxy is what enforces that: `:ro` on the socket restricts the file, never the
 API. See `docs/lessons-learned.md` §27.
 
-**Cup and Watchtower are complementary, not redundant.** Cup tells you what
-changed and lets you decide; Watchtower acts on the few things you have
-explicitly opted in by label. With a git-managed repo the normal update path
-is: Cup reports, you bump a pinned tag, commit, `docker compose up -d`.
+**Cup reports; nothing acts on its own.** With a git-managed repo the update
+path is: Cup reports, you bump a pinned tag, commit, `docker compose up -d`.
 
 **It does not serve anything until its first pass finishes.** Cup checks every
 image against its registry *before* opening the HTTP port. Connections are
@@ -93,9 +91,8 @@ Measured 2026-09-15: Caddy rebuilt on the new `caddy:2.11.4` layers, and Cup
 kept reporting it behind until `docker pull caddy:2.11.4` and a
 `curl http://localhost:8010/api/v3/refresh`.
 
-**Nothing applies these updates.** Watchtower is in this repo for that and is
-scoped by label — but no container carries the label and it is not deployed,
-so as of 2026-09-01 nothing here updates itself. That is deliberate for an
+**Nothing applies these updates.** Watchtower was removed on 2026-10-05
+(`docs/declined-stacks.md`), so nothing here updates itself. That is deliberate for an
 internet-facing media server whose users are family: an unattended 04:00
 upgrade that breaks the TV app is discovered by someone else, at the worst
 time, with no idea what changed. The tradeoff only holds while something says

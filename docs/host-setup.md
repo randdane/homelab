@@ -210,7 +210,7 @@ docker exec backup sh -c 'cd /backup && for d in *; do \
 
 ---
 
-## 2. Free port 53 for Pi-hole
+## 2. Free port 53 for a containerised DNS server — only if running one
 
 `systemd-resolved` holds 53 on most desktop Linux installs. On a **server**
 that should serve LAN DNS, take it back:
@@ -221,11 +221,11 @@ sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
 sudo systemctl restart systemd-resolved
 ```
 
-**Check:** `sudo ss -lnup | grep ':53 '` shows nothing before Pi-hole starts.
+**Check:** `sudo ss -lnup | grep ':53 '` shows nothing before the DNS server starts.
 
-On a **laptop**, do not do this — leave resolved alone and set `DNS_PORT` in
-`stacks/pihole/.env` to a high port instead. `5353` is taken by mDNS; this
-repo uses **5335**. Pi-hole is not the machine's resolver there anyway.
+On a **laptop**, do not do this — leave resolved alone and publish the DNS
+server's port 53 on a high port instead. `5353` is taken by mDNS; this
+repo uses **5335**. The DNS server is not the machine's resolver there anyway.
 
 ---
 

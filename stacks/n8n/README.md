@@ -31,5 +31,5 @@ behind Caddy.
 those encrypted credentials. Rebuilding a mature set of workflows by hand is
 real work, and the credentials cannot be rebuilt at all — only re-issued.
 
-**Do not put this in Watchtower's scope.** n8n migrates its database on
+**Upgrade by hand, never unattended.** n8n migrates its database on
 startup, and workflows can break between major versions.

@@ -14,6 +14,9 @@ exact command or click-path there and waits for them.
 
 ## 0. Decide
 
+- [ ] Not already turned down: check `docs/declined-stacks.md`. If it is
+      there, its "would change if" condition must have happened.
+
 - [ ] It earns its place. `homelab` (VM 101 on `pve`) has ~11 GB; each stack
       costs RAM, disk, and an update stream. Check headroom:
       `ssh homelab 'free -h; df -h /; docker network ls -q | wc -l'`

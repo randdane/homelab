@@ -11,8 +11,6 @@ Dynamic ports (a container port with no host port) are omitted:
 they reserve nothing.
 
 ```
-53:53 pihole
-53:53/udp pihole
 80:80 caddy
 443:443 caddy
 443:443/udp caddy
@@ -33,7 +31,6 @@ HOMELAB_HOST:3389:3389 authentik-ldap
 3478:3478/udp headscale
 HOMELAB_HOST:4242:4242/udp crowdsec
 4533:4533 navidrome
-5001:5001 dockge
 5055:5055 arr-jellyseerr
 5678:5678 n8n
 127.0.0.1:5679:5678 life-queue-n8n
@@ -53,7 +50,6 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 8088:8080 calibre
 8089:8083 calibre-web
 127.0.0.1:8090:8080 dozzle
-8091:80 pihole
 127.0.0.1:8092:80 grocy
 8093:80 wger-nginx
 127.0.0.1:8094:8090 beszel-hub
