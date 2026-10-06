@@ -54,7 +54,6 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 8093:80 wger-nginx
 127.0.0.1:8094:8090 beszel-hub
 8095:8080 owncloud
-8123:8123 homeassistant
 127.0.0.1:8200:8200 duplicati
 8201:8200 vault
 8686:8686 arr-lidarr

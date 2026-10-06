@@ -65,3 +65,28 @@ server and was kept for that reason.
 
 **Would change if:** Technitium is evaluated and rejected. Then the question
 is Pi-hole appliance vs container, not this entry.
+
+## Home Assistant — as a container
+
+**Decided 2026-10-05. Removed.**
+
+Home Assistant runs on its own appliance, `hass`, with ESPHome beside it.
+Moving it into a container, or making it highly available, was considered
+because it seemed unreliable: an NFC tag scanned at bedtime sometimes did
+nothing.
+
+A read-only investigation of 30 nights of HA history found the problem was
+before HA. Every scan that reached HA ran its automation in under 0.1 s, with
+no errors. On the nights it failed, no scan arrived, and the phone had stopped
+reporting to HA for hours, because the app's external URL was an mDNS
+`.local` name that Android resolves unreliably. A container or a cluster would
+have received the same nothing. The fix was the app's server URLs, not the
+platform.
+
+The appliance also brings what a container would lose: supervised add-ons and
+OS updates handled by HA itself, plus a USB-radio host that stays up when the
+Docker host reboots.
+
+**Would change if:** the appliance itself proves unreliable, meaning HA
+restarts, a slow UI or failing automations that HA's own logs show. Or a
+radio or integration needs hardware the appliance cannot host.

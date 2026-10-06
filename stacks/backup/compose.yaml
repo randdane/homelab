@@ -119,8 +119,6 @@ services:
       # ownCloud: file contents on disk, all metadata in MariaDB.
       #- owncloud_files:/backup/owncloud-files:ro
       #- owncloud_mysql:/backup/owncloud-mysql:ro
-      # Config, automations, and all recorded history.
-      #- homeassistant_config:/backup/homeassistant:ro
       # Recipes, images, and the SQLite database.
       - mealie_data:/backup/mealie:ro
       # Beszel: users, systems, alert rules and metric history.
@@ -207,8 +205,6 @@ volumes:
   #owncloud_files:
   #  external: true
   #owncloud_mysql:
-  #  external: true
-  #homeassistant_config:
   #  external: true
   mealie_data:
     external: true
