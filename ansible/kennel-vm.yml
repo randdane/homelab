@@ -154,6 +154,16 @@
 # ip_forward = 1 is needed there too: kennel's Docker bridge networking forwards.
 # This is the end of homelab's side: a hardened VM. Docker and the agents are
 # ~/Projects/_personal/kennel's.
+# The hardening play gathers facts first thing, which races a VM qm start
+# booted seconds ago.
+- name: Wait for the VM
+  hosts: agent_vms
+  gather_facts: false
+  tasks:
+    - name: Wait for ssh
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
 - name: Hardening
   ansible.builtin.import_playbook: homelab-harden.yml
   vars:
