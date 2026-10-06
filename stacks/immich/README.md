@@ -56,6 +56,17 @@ Test it before the first real start: with the share unmounted,
 `docker compose up -d` must fail on the missing bind source. Remount it, and
 it must start.
 
+**Measured at the first start, 2026-10-05.** With the share unmounted,
+compose refused `immich-server` with `bind source path does not exist:
+/mnt/photos/immich`. Remounted, all four containers were healthy within 90 s
+and `/api/server/ping` answered `pong`. Immich created `backups`,
+`encoded-video`, `library`, `profile`, `thumbs` and `upload`, each with its
+`.immich` marker; create, rename, read and delete through `/data` all worked.
+
+**The server runs as root**, so files on the dataset are owned `0:0`. That is
+acceptable because only Immich and Duplicati, also root, read it. If anything
+else ever needs to, set `user:` on the service.
+
 Postgres (`db-data`) and the model cache stay as named volumes on the VM
 disk. Postgres is small, and it needs local-disk fsync semantics, which
 virtiofs is not.
