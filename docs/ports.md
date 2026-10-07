@@ -32,6 +32,9 @@ HOMELAB_HOST:3389:3389 authentik-ldap
 HOMELAB_HOST:4242:4242/udp crowdsec
 4533:4533 navidrome
 5055:5055 arr-jellyseerr
+127.0.0.1:5300:53/udp technitium
+127.0.0.1:5300:53 technitium
+127.0.0.1:5380:5380 technitium
 5678:5678 n8n
 127.0.0.1:5679:5678 life-queue-n8n
 5984:5984 obsidian-livesync

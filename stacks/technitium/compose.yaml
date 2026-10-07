@@ -1,0 +1,49 @@
+name: technitium
+
+x-homelab:
+  lifecycle: developing
+  host: laptop
+  exposure: internal
+  data: replaceable
+  purpose: Evaluating Technitium DNS as a Pi-hole replacement (Vikunja #87)
+  prerequisites: DNS_SERVER_ADMIN_PASSWORD in .env
+  description: Research only; nothing points at it for DNS
+
+services:
+  technitium:
+    image: technitium/dns-server:15.6.0
+    container_name: technitium
+    hostname: technitium
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - DNS_SERVER_DOMAIN=technitium
+      - DNS_SERVER_ADMIN_PASSWORD=${DNS_SERVER_ADMIN_PASSWORD:?set in .env}
+    ports:
+      # Loopback only, and not on 53: systemd-resolved holds 127.0.0.53:53,
+      # and nothing should resolve through this while it is under evaluation.
+      #   dig @127.0.0.1 -p 5300 example.com
+      - "127.0.0.1:5300:53/udp"
+      - "127.0.0.1:5300:53/tcp"
+      - "127.0.0.1:5380:5380"
+    volumes:
+      - data:/etc/dns
+    labels:
+      homepage.group: Infrastructure
+      homepage.name: Technitium DNS
+      homepage.description: Pi-hole replacement under evaluation
+      homepage.href: http://${HOMELAB_HOST:-localhost}:5380
+      homepage.icon: technitium.png
+    healthcheck:
+      test: ["CMD-SHELL", "dig +short +time=2 @127.0.0.1 localhost >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  data:
+    # Research instance on the laptop: zones and blocklists are rebuilt from
+    # the web UI in minutes. Register it for backup if it is promoted.
+    labels:
+      homelab.backup: exclude
