@@ -48,3 +48,19 @@ Pi-hole parity holds: every Pi-hole feature in use has a tested equivalent.
   each node's web service (port 53443) on a certificate the others trust.
   Not tested with a trusted certificate; the owner decided that is not needed
   for the decision.
+- **Memory with Pi-hole's 48 block lists** (1,597,862 domains), measured on
+  x86_64 from a cold restart under a cgroup cap, not on ARM:
+
+  | Cap | Peak | Settled | Blocking |
+  |---|---|---|---|
+  | none | 760 MiB | 450 MiB | works |
+  | 600 MiB | 481 MiB | 452 MiB | blocks within 5 s |
+  | 400 MiB | 306 MiB | 176 MiB | **never loads** |
+
+  At 400 MiB the load throws `System.OutOfMemoryException` in
+  `BlockListZoneManager.LoadBlockLists`, and the server **fails open**: it
+  keeps resolving with no container restart, no OOM kill and nothing blocked.
+  A health check that only resolves a name stays green through that, so a
+  real deployment needs a probe that expects a blocked name to return
+  NXDOMAIN. The `pihole` Pi 3 has 1 GB, so the budget is tight but workable
+  if Technitium runs alone on it.
