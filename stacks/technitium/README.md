@@ -21,3 +21,30 @@ DNS on `127.0.0.1:5300`: `dig @127.0.0.1 -p 5300 example.com`.
 - Questions to answer are in #87: blocklists and per-client policy, serving
   `iot` and `agents` (VLAN 5's DNS is pinned to Pi-hole's address in `200.fw` and
   on `dream`), local records without rebind trouble, migration and rollback.
+
+## Findings (2026-10-06, 15.6.0, laptop instance)
+
+Pi-hole parity holds: every Pi-hole feature in use has a tested equivalent.
+
+- **Apps exist under these names:** Advanced Blocking (block lists, regex,
+  groups by client IP or subnet), DNS Rebinding Protection, Query Logs
+  (Sqlite), and Log Exporter (file, HTTP or syslog).
+- **Local records:** a primary zone named after the vhost itself
+  (`vikunja.<PUBLIC_DOMAIN>`, A record at the apex) answers locally without
+  shadowing the parent: sibling vhosts, the apex and MX still resolve
+  publicly, unknown names still return NXDOMAIN, and names under the
+  vhost's zone return NXDOMAIN. Never create a zone for `<PUBLIC_DOMAIN>`
+  itself.
+- **Rebinding:** with no app installed, a public name with a private answer
+  passes straight through. That fixes the problem Pi-hole's local records exist
+  to work around. With DNS Rebinding Protection on, the result is `NOERROR`
+  with zero answers, same as Pi-hole, but locally hosted zones are exempt, so a
+  vhost zone with a private address still answers.
+- **Clustering:** join works and zones reach the secondary, but heartbeat and
+  config sync (Allowed, Blocked, Apps, Settings) then fail with
+  `UntrustedRoot` against the primary's self-signed web certificate.
+  `ignoreCertificateErrors` covers the join call only. So a domain blocked on
+  the primary is not blocked on the secondary. A two-node deployment needs
+  each node's web service (port 53443) on a certificate the others trust.
+  Not tested with a trusted certificate; the owner decided that is not needed
+  for the decision.
