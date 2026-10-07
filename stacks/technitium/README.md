@@ -19,5 +19,5 @@ DNS on `127.0.0.1:5300`: `dig @127.0.0.1 -p 5300 example.com`.
   password lives in the volume.
 - Image pinned: it migrates its config in `/etc/dns` on upgrade.
 - Questions to answer are in #87: blocklists and per-client policy, serving
-  `iot` and `agents` (VLAN 5's DNS is pinned to `192.168.1.6` in `200.fw` and
+  `iot` and `agents` (VLAN 5's DNS is pinned to Pi-hole's address in `200.fw` and
   on `dream`), local records without rebind trouble, migration and rollback.

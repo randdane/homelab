@@ -17,7 +17,7 @@
 #     router and appliance config, by hand (devices.md)
 #   - template 9000 -- homelab-vm.yml builds it; this play only requires it
 #   - Docker, agent stacks, API keys -- the kennel project; the VM gets its own
-#     capped keys, never anything from sys76's token store
+#     capped keys, never anything from the workstation's token store
 #   - tailnet -- the VM is deliberately not a member
 
 - name: kennel VM on the Proxmox host
