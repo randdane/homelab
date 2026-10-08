@@ -1374,3 +1374,23 @@ def test_docker_proxy_missing_binary_is_not_a_pass():
     import unittest.mock as mock
     with mock.patch("subprocess.run", side_effect=FileNotFoundError("pgrep")):
         assert "cannot check" in status.docker_proxy_running_problem()
+
+
+# --- netalertx_stale_problem ------------------------------------------------
+
+def test_netalertx_fresh_import_is_not_a_problem():
+    assert status.netalertx_stale_problem(4.0) is None
+
+
+def test_netalertx_at_the_limit_is_not_a_problem():
+    assert status.netalertx_stale_problem(30.0) is None
+
+
+def test_netalertx_stale_import_is_a_problem():
+    problem = status.netalertx_stale_problem(31.0)
+    assert problem is not None and "31" in problem
+
+
+def test_netalertx_unreadable_is_a_problem():
+    """Running here but unanswerable: a crashed container must not read as fine."""
+    assert status.netalertx_stale_problem(None) is not None

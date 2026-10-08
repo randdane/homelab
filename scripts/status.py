@@ -842,6 +842,52 @@ def unmounted_backup_problem(registered, mounted, daemon_down=False):
             f"&& docker compose up -d --force-recreate")
 
 
+MAX_NETALERTX_SILENCE_MINUTES = 30
+
+
+def netalertx_stale_problem(minutes, maximum=MAX_NETALERTX_SILENCE_MINUTES):
+    """Whether NetAlertX has stopped seeing devices.
+
+    It imports dream's client list every 5 minutes, and at least 15 clients
+    are always active, so the newest last-seen time is never more than a poll
+    old while imports work. Age is the honest question: a revoked key, dream
+    down and a crashed plugin all look the same here, and all of them mean
+    new devices go unreported while the last list still looks current.
+
+    30 minutes is six missed polls, which no ordinary blip produces.
+    `minutes` None means the container could not be asked.
+    """
+    if minutes is None:
+        return ("netalertx: could not read its device table -- "
+                "docker logs netalertx")
+    if minutes <= maximum:
+        return None
+    return (f"netalertx: no device seen for {minutes:.0f} min, want <= "
+            f"{maximum} -- the UniFi import has stopped; docker logs netalertx")
+
+
+# devLastConnection is naive UTC (measured 2026-10-08: 23:30 stored at 18:30
+# CDT), whatever the container's TZ, so compare against UTC, not now().
+NETALERTX_AGE_SQL = (
+    "import sqlite3,datetime as d;"
+    "c=sqlite3.connect('file:/data/db/app.db?mode=ro',uri=True);"
+    "v=c.execute('select max(devLastConnection) from Devices').fetchone()[0];"
+    "n=d.datetime.now(d.timezone.utc).replace(tzinfo=None);"
+    "print((n-d.datetime.fromisoformat(v)).total_seconds()/60 if v else '')"
+)
+
+
+def netalertx_minutes_since_seen():
+    """Minutes since NetAlertX last saw any device, or None if unanswerable."""
+    try:
+        out = subprocess.run(
+            ["docker", "exec", "netalertx", "python3", "-c", NETALERTX_AGE_SQL],
+            capture_output=True, text=True, timeout=DOCKER_TIMEOUT)
+        return float(out.stdout.strip()) if out.returncode == 0 else None
+    except (subprocess.SubprocessError, OSError, ValueError):
+        return None
+
+
 def describe_failure(row):
     """One line per failing stack, naming the service that is actually wrong.
 
@@ -1020,6 +1066,12 @@ def problems_for(rows, state):
             daemon_down=daemon_problem() is not None)
         if unmounted:
             problems.append(unmounted)
+
+    # Scoped like the backup checks: only where NetAlertX has actually run.
+    if has_run_here(state, "netalertx"):
+        stale = netalertx_stale_problem(netalertx_minutes_since_seen())
+        if stale:
+            problems.append(stale)
 
     return problems
 
