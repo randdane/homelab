@@ -105,8 +105,6 @@ services:
       # This is also where the Obsidian vault lives, so it is not optional.
       - forgejo_forgejo-data:/backup/forgejo-data:ro
       - forgejo_pg-data:/backup/forgejo-pg:ro
-      # SQLite. The only volume here whose loss is unrecoverable.
-      #- vaultwarden_data:/backup/vaultwarden:ro
       # Play counts, ratings, playlists -- not regenerable by rescanning.
       #- navidrome_data:/backup/navidrome:ro
       # Immich's database. The photos themselves go to B2 through Duplicati (stacks/immich/README.md).
@@ -115,9 +113,6 @@ services:
       - paperless_media:/backup/paperless-media:ro
       - paperless_data:/backup/paperless-data:ro
       - paperless_pg-data:/backup/paperless-pg:ro
-      # ownCloud: file contents on disk, all metadata in MariaDB.
-      #- owncloud_files:/backup/owncloud-files:ro
-      #- owncloud_mysql:/backup/owncloud-mysql:ro
       # Recipes, images, and the SQLite database.
       - mealie_data:/backup/mealie:ro
       # Beszel: users, systems, alert rules and metric history.
@@ -154,8 +149,6 @@ services:
       #- obsidian-livesync_data:/backup/obsidian:ro
       # Job definitions and the block database incrementals depend on.
       - duplicati_config:/backup/duplicati:ro
-      # Workflows, execution history, and encrypted credentials.
-      #- n8n_data:/backup/n8n:ro
       # Flows plus the encrypted provider-key store.
       #- flowise_data:/backup/flowise:ro
       # The ebook library plus both tools' settings.

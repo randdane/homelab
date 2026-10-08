@@ -97,8 +97,8 @@ services:
     environment:
       # MUST be set before the first start. See prerequisites above.
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?set N8N_ENCRYPTION_KEY in .env BEFORE first run — changing it later orphans every stored credential}
-      # 5679 on the host so this never fights the separate homelab n8n stack
-      # (5678) if both ever land here. The container still listens on 5678.
+      # 5679 on the host, not n8n's usual 5678, which leaves 5678 free for any
+      # other n8n. The container still listens on 5678.
       N8N_WEBHOOK_URL: ${N8N_PUBLIC_URL:-http://localhost:5679/}
       GENERIC_TIMEZONE: ${TZ:-America/Chicago}
       TZ: ${TZ:-America/Chicago}

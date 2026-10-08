@@ -16,8 +16,8 @@ certificates.
 
 Auth is deny-all, so nothing works until users exist. Each `user add` prompts
 for a password; nothing logs in with it, but keep it in **Bitwarden** — the
-hosted one. `stacks/vaultwarden` is `lifecycle: planned` and has never been
-deployed, so an earlier instruction here to "keep it in Vaultwarden" sent
+hosted one. Vaultwarden was never deployed and was rejected 2026-10-08, so
+an earlier instruction here to "keep it in Vaultwarden" sent
 someone looking in a password manager that does not exist. The same applies
 to the three tokens below: save each one as it is printed. A token that was
 never recorded is not recoverable — mint a replacement with

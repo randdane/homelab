@@ -113,10 +113,6 @@ def test_the_check_can_actually_fail(tmp_path):
 # with a comment on it.
 ALLOWED_DEFAULTS = {
     # (stack, variable): (the exact value, why it is correct despite the guard)
-    ("obsidian-livesync", "COUCHDB_USER"): (
-        "obsidian",
-        "a username the compose file and README both assume; not a credential",
-    ),
 }
 
 # `${VAR?}` (no colon) fails only on UNSET, so empty satisfies it and this

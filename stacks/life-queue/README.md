@@ -71,8 +71,8 @@ every boot, which logs out every session on every restart.
 
 n8n's owner account is **not** in `.env` or anywhere in this repo — it lives
 in the n8n database as a bcrypt hash, so it cannot be read back out. The
-credential is kept in **Bitwarden** (the hosted one; `stacks/vaultwarden` is
-`lifecycle: planned` and has never been deployed, so nothing is there). The
+credential is kept in **Bitwarden** (the hosted one; there is no self-hosted
+password manager). The
 account is the owner email, MFA off as of 2026-09-13.
 
 If it is ever lost, reset it rather than hunting:

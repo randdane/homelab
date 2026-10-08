@@ -118,7 +118,7 @@ def parse_intent(config):
 
     # `internal` is a claim about reachability, and a published port on
     # 0.0.0.0 contradicts it. Three stacks said `internal` while publishing on
-    # every interface (homepage 3001, vault 8201) -- not
+    # every interface (homepage 3001, and a since-removed vault 8201) -- not
     # because anyone decided that, but because `internal` reads as "not very
     # important" and nothing ever compared it to the ports block. A word that
     # drifts into meaning "unimportant" is no longer a record of what is

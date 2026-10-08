@@ -35,9 +35,7 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 127.0.0.1:5300:53/udp technitium
 127.0.0.1:5300:53 technitium
 127.0.0.1:5380:5380 technitium
-5678:5678 n8n
 127.0.0.1:5679:5678 life-queue-n8n
-5984:5984 obsidian-livesync
 6767:6767 arr-bazarr
 6881:6881 arr-gluetun
 6881:6881/udp arr-gluetun
@@ -45,7 +43,6 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 127.0.0.1:8000:8000 paperless-webserver
 127.0.0.1:8010:8000 cup
 127.0.0.1:8080:80 it-tools
-8081:80 vaultwarden
 8082:8082 arr-gluetun
 8085:3001 myfin-api
 8086:80 myfin-frontend
@@ -56,9 +53,7 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 127.0.0.1:8092:80 grocy
 8093:80 wger-nginx
 127.0.0.1:8094:8090 beszel-hub
-8095:8080 owncloud
 127.0.0.1:8200:8200 duplicati
-8201:8200 vault
 8686:8686 arr-lidarr
 8989:8989 arr-sonarr
 127.0.0.1:9000:9000 authentik-server
