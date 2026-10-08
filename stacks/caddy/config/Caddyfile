@@ -297,6 +297,20 @@ jellyfin.{$DUCKDNS_HOST} {
 		}
 	}
 
+	# NetAlertX: the new-device alerter. Holds a UniFi API key. Behind this
+	# gate, Authentik forward-auth, and its own password. Only 20211: its own
+	# Nginx proxies /server to the backend on 20212 internally.
+	@netalertx {
+		host netalertx.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @netalertx {
+		route {
+			import authentik_forward_auth
+			reverse_proxy netalertx:20211
+		}
+	}
+
 	# Karakeep, the bookmark archiver. Internal: it holds a copy of everything
 	# saved to it. Its port 3006 is loopback-only on the host: the break-glass
 	# path is an ssh tunnel.

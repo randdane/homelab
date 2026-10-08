@@ -1,0 +1,76 @@
+name: netalertx
+
+x-homelab:
+  lifecycle: developing
+  host: always-on
+  exposure: lan
+  # The known-device list. Losing it means a fresh 24 h baseline, not lost data.
+  data: replaceable
+  purpose: Pushes to the phone when a device the house has not seen joins any VLAN
+  prerequisites: A UniFi Integration API key (homelab-netalertx) and the ntfy homelab token, both entered in the UI, never in .env
+  description: Reads dream's client list every 5 minutes; scans nothing itself
+
+services:
+  netalertx:
+    image: ghcr.io/netalertx/netalertx:26.10.0
+    container_name: netalertx
+    restart: unless-stopped
+    # Upstream's hardening, kept. NET_ADMIN/NET_RAW are dropped with host
+    # networking: they exist for arp-scan and nmap, which are not loaded.
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    tmpfs:
+      - "/tmp:mode=1700,uid=0,gid=0,rw,noexec,nosuid,nodev,async,noatime,nodiratime"
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - PORT=20211
+      # Its own variable: APP_CONF_OVERRIDE cannot set it. No scanners.
+      - LOADED_PLUGINS=["UNIFIAPI","NTFY","NTFPRCS","NEWDEV","DBCLNP","MAINT","SETPWD","UI","VNDRPDT"]
+      # Re-applied at every start, so a UI edit to these does not survive a
+      # restart. That is the point: these are the safety settings.
+      # The *_RUN lines matter as much as LOADED_PLUGINS: a plugin whose RUN
+      # is not `disabled` loads even when it is not listed.
+      # LOG_LEVEL: upstream defaults to verbose, which logs the UniFi key.
+      # Never put a secret here -- this is written to /data and logged.
+      - >-
+        APP_CONF_OVERRIDE={"LOG_LEVEL":"minimal",
+        "ARPSCAN_RUN":"disabled","AVAHISCAN_RUN":"disabled","DIGSCAN_RUN":"disabled",
+        "NBTSCAN_RUN":"disabled","NSLOOKUP_RUN":"disabled","INTRNT_RUN":"disabled",
+        "SETPWD_enable_password":"True",
+        "UNIFIAPI_RUN":"schedule","UNIFIAPI_RUN_SCHD":"*/5 * * * *",
+        "NTFPRCS_INCLUDED_SECTIONS":"['new_devices']",
+        "NEWDEV_devAlertDown":"0","NEWDEV_devAlertEvents":"0",
+        "NTFY_HOST":"http://ntfy:80","NTFY_TOPIC":"homelab-alerts",
+        "TIMEZONE":"America/Chicago"}
+    ports:
+      # Loopback only. Break-glass when Caddy or Authentik is down:
+      #   ssh -N -L 20211:127.0.0.1:20211 homelab
+      - "127.0.0.1:${PORT:-20211}:20211"
+    volumes:
+      - data:/data
+      - /etc/localtime:/etc/localtime:ro
+    # `edge`, not `admin`: Caddy, ntfy and Kuma are all there, and the UI has
+    # its own password (unlike dozzle and cup). The backend API (20212) is
+    # also reachable on edge and refuses every request without API_TOKEN.
+    networks:
+      - default
+      - edge
+    labels:
+      homepage.group: Ops
+      homepage.name: NetAlertX
+      homepage.description: New-device alerts from dream's client list
+      homepage.href: https://netalertx.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      homepage.icon: netalertx
+      docker-volume-backup.stop-during-backup: "true"
+
+networks:
+  edge:
+    external: true
+
+volumes:
+  data:

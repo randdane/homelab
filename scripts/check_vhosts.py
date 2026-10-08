@@ -203,6 +203,9 @@ NOT_PHONE_PROBED = {
     "dozzle.{$PUBLIC_DOMAIN}":
         "admin UI, not used from the phone; losing it costs nothing that "
         "an ssh session does not already give",
+    "netalertx.{$PUBLIC_DOMAIN}":
+        "admin UI, rarely opened; its alerts reach the phone through ntfy, "
+        "and status.py pages when its UniFi import stops",
 }
 
 

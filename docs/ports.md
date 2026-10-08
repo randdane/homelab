@@ -59,4 +59,5 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 127.0.0.1:9000:9000 authentik-server
 9696:9696 arr-gluetun
 127.0.0.1:9925:9000 mealie
+127.0.0.1:20211:20211 netalertx
 ```

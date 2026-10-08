@@ -115,6 +115,9 @@ services:
       - paperless_pg-data:/backup/paperless-pg:ro
       # Recipes, images, and the SQLite database.
       - mealie_data:/backup/mealie:ro
+      # NetAlertX: the known-device list. Replaceable, but a restore beats a
+      # fresh 24 h baseline. Holds the UniFi key -- see stacks/netalertx/README.md.
+      - netalertx_data:/backup/netalertx:ro
       # Beszel: users, systems, alert rules and metric history.
       - beszel_data:/backup/beszel:ro
       # arr: configs only -- indexers, API keys, quality profiles, requests.
@@ -239,6 +242,8 @@ volumes:
   #obsidian-livesync_data:
   #  external: true
   duplicati_config:
+    external: true
+  netalertx_data:
     external: true
   #n8n_data:
   #  external: true
