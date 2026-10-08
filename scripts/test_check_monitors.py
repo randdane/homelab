@@ -17,6 +17,7 @@ from check_monitors import (
     parse_since,
     probe_command,
     probe_verdict,
+    no_retry_monitors,
     silent_monitors,
     stack_identifiers,
     suspect_monitors,
@@ -193,6 +194,13 @@ def test_a_monitor_with_no_notifier_is_reported():
 
 def test_a_row_without_a_notifier_count_is_not_guessed_at():
     assert silent_monitors([{"name": "x"}]) == []
+
+
+def test_a_monitor_with_no_retries_is_reported():
+    """2026-10-08: monitors left at Kuma's default of 0 paged on a reboot."""
+    rows = [{"name": "immich", "maxretries": 0}, {"name": "ntfy", "maxretries": 2},
+            {"name": "x"}]
+    assert no_retry_monitors(rows) == ["immich"]
 
 
 def test_identifiers_include_service_and_container_names():

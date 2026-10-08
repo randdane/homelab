@@ -73,7 +73,7 @@ REQUIRED_MONITORS = {"Vhosts from phone"}
 TIME_FMT = "%Y-%m-%d %H:%M:%S.%f"
 
 QUERY = """
-select m.id, m.name, m.type, m.url, m.active,
+select m.id, m.name, m.type, m.url, m.active, m.maxretries,
   (select status from heartbeat where monitor_id=m.id order by id desc limit 1) as status,
   (select time from heartbeat where monitor_id=m.id and important=1 order by id desc limit 1) as since,
   (select msg from heartbeat where monitor_id=m.id order by id desc limit 1) as msg,
@@ -282,6 +282,17 @@ def silent_monitors(monitors):
     return sorted(m.get("name") for m in monitors if m.get("notifiers") == 0)
 
 
+def no_retry_monitors(monitors):
+    """Active monitors that alert on the first failed check.
+
+    Kuma creates monitors with 0 retries, so this usually marks one not yet
+    fully configured. Found 2026-10-08: a cold boot of `pve` paged for
+    Paperless and immich while their containers were still starting.
+    Only an explicit 0 counts, as in silent_monitors.
+    """
+    return sorted(m.get("name") for m in monitors if m.get("maxretries") == 0)
+
+
 def load_monitors():
     r = _run(["docker", "exec", CONTAINER, "sqlite3", "-batch", "-json", DB, QUERY])
     if r.returncode != 0:
@@ -354,6 +365,11 @@ def main():
             f"{name}: no active notification attached -- it can go red but "
             f"cannot tell anyone. Attach one in the monitor's settings.")
 
+    for name in no_retry_monitors(monitors):
+        problems.append(
+            f"{name}: 0 retries -- one failed check alerts, so every reboot "
+            f"pages. Set Retries in the monitor's settings.")
+
     for name in missing_required(monitors):
         problems.append(
             f"{name}: required monitor is missing -- its coverage is gone "
@@ -375,7 +391,7 @@ def main():
         return 1
 
     print(f"clean: {len(monitors)} active monitors, all targets reachable from "
-          f"inside {CONTAINER}, none stale-red, all with a notifier; "
+          f"inside {CONTAINER}, none stale-red, all with a notifier and retries; "
           f"{len(stacks)} production stack(s) all covered", file=sys.stderr)
     return 0
 
