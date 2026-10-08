@@ -49,11 +49,15 @@ a UI edit to those settings is undone by the next restart, on purpose.
   only, and quiet ones drop out of it and come back many times a day. Only
   new-device alerts are on.
 - **A visitor who connects and leaves between two polls is missed.**
+- **The UniFi key is stored in plain text under `/data`**, measured
+  2026-10-09: `db/app.db`, `config/app.conf`, `config/app.conf.bak`, and every
+  timestamped `config/app.conf_*.backup` NetAlertX writes when settings are
+  saved. So the nightly archive and Duplicati's offsite copy hold it too. If
+  a backup ever leaks, rotate `homelab-netalertx` in UniFi.
 - **`status.py` pages if no device has been seen for 30 minutes**: the sign
   that the UniFi import stopped (revoked key, `dream` down, plugin crash).
 
 ## Unverified
 
-- Where the UniFi key ends up at rest under `/data`.
 - What NetAlertX itself shows when the key is revoked.
 - The 24 h baseline and a real new-device push.
