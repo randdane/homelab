@@ -15,12 +15,17 @@ services:
     image: ghcr.io/netalertx/netalertx:26.10.0
     container_name: netalertx
     restart: unless-stopped
-    # Upstream's hardening, kept. NET_ADMIN/NET_RAW are dropped with host
-    # networking: they exist for arp-scan and nmap, which are not loaded.
+    # Upstream's hardening, kept.
     read_only: true
     cap_drop:
       - ALL
     cap_add:
+      # Not for scanning (nothing scans): the image's Python binary carries
+      # file capabilities cap_net_raw,cap_net_admin+eip, and the kernel
+      # refuses to exec it unless both are in the bounding set. On bridge
+      # networking they reach only the container's own network namespace.
+      - NET_RAW
+      - NET_ADMIN
       - CHOWN
       - SETUID
       - SETGID
