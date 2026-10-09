@@ -38,6 +38,12 @@ secret was never reused. Password login is kept deliberately (no
 auto-redirect): it is the way in when Authentik is down. First SSO login
 matched the existing `r` account by email rather than creating a second.
 
+**The Android app Ghee** signs in through Authentik too (since 2026-10-09).
+It needs Mealie v3.23.0 or newer for `/api/auth/oauth/native/config`;
+older versions leave it stuck on "Completing login". The provider's
+redirect URIs also include `ghee://oauth/callback` (strict match), set
+through the API, so it lives in Authentik's database, not in this repo.
+
 Three things broke on the way, each with a misleading symptom:
 
 - **Mealie's backend could not reach Authentik at all.** It fetches
