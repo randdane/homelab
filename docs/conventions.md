@@ -218,7 +218,7 @@ Pin anything that migrates on-disk state: databases, Loki, Mimir, Immich.
 Nothing updates images unattended: tags are bumped in this repo after Cup or
 `check_updates.py` reports them. An unattended updater turns a one-way schema
 migration at startup into an upgrade nobody chose and nobody can undo by
-pulling the old tag (`docs/declined-stacks.md`, Watchtower).
+pulling the old tag (`$SITE_DIR/docs/candidates.md`, Watchtower).
 
 ## Homepage labels
 

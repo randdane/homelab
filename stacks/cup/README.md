@@ -92,7 +92,7 @@ kept reporting it behind until `docker pull caddy:2.11.4` and a
 `curl http://localhost:8010/api/v3/refresh`.
 
 **Nothing applies these updates.** Watchtower was removed on 2026-10-05
-(`docs/declined-stacks.md`), so nothing here updates itself. That is deliberate for an
+(`$SITE_DIR/docs/candidates.md`), so nothing here updates itself. That is deliberate for an
 internet-facing media server whose users are family: an unattended 04:00
 upgrade that breaks the TV app is discovered by someone else, at the worst
 time, with no idea what changed. The tradeoff only holds while something says

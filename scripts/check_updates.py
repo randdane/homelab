@@ -23,7 +23,7 @@ all forty would mean alerting every week, which is the same as not alerting.
 
 This is deliberately a report, not an upgrade. Nothing updates anything here
 automatically -- Watchtower was removed on 2026-10-05
-(docs/declined-stacks.md). That is a defensible position for an internet-facing media
+($SITE_DIR/docs/candidates.md). That is a defensible position for an internet-facing media
 server whose users are family: an unattended 04:00 upgrade that breaks the TV
 app is discovered by someone else, at the worst time, with no idea what
 changed. The tradeoff only works if somebody is told when an update is
