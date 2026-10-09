@@ -846,11 +846,10 @@ MAX_NETALERTX_SILENCE_MINUTES = 30
 
 
 def netalertx_stale_problem(minutes, maximum=MAX_NETALERTX_SILENCE_MINUTES):
-    """Whether NetAlertX has stopped seeing devices.
+    """Whether NetAlertX's UniFi import has stopped succeeding.
 
-    It imports dream's client list every 5 minutes, and at least 15 clients
-    are always active, so the newest last-seen time is never more than a poll
-    old while imports work. Age is the honest question: a revoked key, dream
+    It imports dream's client list every 5 minutes, so the last successful
+    import is never more than a poll old while imports work. Age is the honest question: a revoked key, dream
     down and a crashed plugin all look the same here, and all of them mean
     new devices go unreported while the last list still looks current.
 
@@ -858,30 +857,34 @@ def netalertx_stale_problem(minutes, maximum=MAX_NETALERTX_SILENCE_MINUTES):
     `minutes` None means the container could not be asked.
     """
     if minutes is None:
-        return ("netalertx: could not read its device table -- "
+        return ("netalertx: could not read its last UniFi import time -- "
                 "docker logs netalertx")
     if minutes <= maximum:
         return None
-    return (f"netalertx: no device seen for {minutes:.0f} min, want <= "
+    return (f"netalertx: no successful UniFi import for {minutes:.0f} min, want <= "
             f"{maximum} -- the UniFi import has stopped; docker logs netalertx")
 
 
-# devLastConnection is naive UTC (measured 2026-10-08: 23:30 stored at 18:30
-# CDT), whatever the container's TZ, so compare against UTC, not now().
-NETALERTX_AGE_SQL = (
-    "import sqlite3,datetime as d;"
-    "c=sqlite3.connect('file:/data/db/app.db?mode=ro',uri=True);"
-    "v=c.execute('select max(devLastConnection) from Devices').fetchone()[0];"
-    "n=d.datetime.now(d.timezone.utc).replace(tzinfo=None);"
-    "print((n-d.datetime.fromisoformat(v)).total_seconds()/60 if v else '')"
+# Age of the UniFi plugin's result file, NOT max(devLastConnection): on a
+# failed run (measured 2026-10-08, a 401 from a bad key) NetAlertX re-imports
+# the previous result file, so every device's last-seen time keeps advancing
+# and a dead import looks healthy. The file is rewritten only by a successful
+# run. It lives on tmpfs and is gone after a restart, so the container's start
+# time (/proc/1) stands in until the first run writes it.
+NETALERTX_AGE_PY = (
+    "import os,time;"
+    "f='/tmp/log/plugins/last_result.UNIFIAPI.log';"
+    "m=max(os.stat(f).st_mtime if os.path.exists(f) else 0,"
+    "os.stat('/proc/1').st_ctime);"
+    "print((time.time()-m)/60)"
 )
 
 
 def netalertx_minutes_since_seen():
-    """Minutes since NetAlertX last saw any device, or None if unanswerable."""
+    """Minutes since NetAlertX's last successful UniFi import, or None."""
     try:
         out = subprocess.run(
-            ["docker", "exec", "netalertx", "python3", "-c", NETALERTX_AGE_SQL],
+            ["docker", "exec", "-u", "20211", "netalertx", "python3", "-c", NETALERTX_AGE_PY],
             capture_output=True, text=True, timeout=DOCKER_TIMEOUT)
         return float(out.stdout.strip()) if out.returncode == 0 else None
     except (subprocess.SubprocessError, OSError, ValueError):
