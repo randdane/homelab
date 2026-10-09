@@ -526,3 +526,7 @@ per clone:
 ```bash
 git config core.hooksPath hooks
 ```
+
+`homelab-private` has its own `hooks/pre-commit`, enabled the same way. It runs
+only the Tasker check, from this repo's `scripts/`, so it needs the two clones
+side by side. The identity scan does not apply there.
