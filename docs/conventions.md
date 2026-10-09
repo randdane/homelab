@@ -514,3 +514,15 @@ the day someone promotes it to `production`. The state file is
 `${XDG_STATE_HOME:-~/.local/state}/homelab/status-<host>.json`; entries can be
 cleared by hand, and the date they were written is usually enough to tell the
 accidents apart.
+
+## Pre-commit hook
+
+`hooks/pre-commit` runs the identity-leak scan and the Tasker filename check
+before every commit, in under a second. CI runs the full `scripts/check.sh`,
+but only after the push, and this repo is public: on 2026-10-06 a site word in
+`ansible/kennel-vm.yml` was already on GitHub when CI caught it. Enable it once
+per clone:
+
+```bash
+git config core.hooksPath hooks
+```

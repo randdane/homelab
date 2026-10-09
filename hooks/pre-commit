@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Gate before anything reaches the public repo. CI runs the full
+# scripts/check.sh on push, but by then a leaked site word is already public
+# (2026-10-06, ansible/kennel-vm.yml). These are the fast, local-only checks.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+exec uv run --with pytest pytest -q scripts/test_identity_leak.py scripts/test_tasker_xml.py

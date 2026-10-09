@@ -24,6 +24,8 @@
 # Extensionless like Caddyfile above: caddy is built, not pulled, because
 # the CrowdSec bouncer is a compiled-in plugin. See stacks/caddy/Dockerfile.
 !Dockerfile
+# Git runs it from core.hooksPath (docs/conventions.md, Pre-commit hook).
+!hooks/pre-commit
 !*.py
 !*.sh
 !*.toml
