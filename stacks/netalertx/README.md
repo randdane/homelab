@@ -54,10 +54,17 @@ a UI edit to those settings is undone by the next restart, on purpose.
   timestamped `config/app.conf_*.backup` NetAlertX writes when settings are
   saved. So the nightly archive and Duplicati's offsite copy hold it too. If
   a backup ever leaks, rotate `homelab-netalertx` in UniFi.
-- **`status.py` pages if no device has been seen for 30 minutes**: the sign
-  that the UniFi import stopped (revoked key, `dream` down, plugin crash).
+- **A dead UniFi import looks healthy inside NetAlertX.** Tested 2026-10-08
+  with a deliberately wrong key: the plugin logs a `401` traceback and a
+  generic `ERROR` line, nothing is pushed, and NetAlertX re-imports its
+  previous result file, so every device's last-seen time keeps advancing.
+  New devices go undetected meanwhile.
+- **`status.py` pages when there has been no successful UniFi import for 30
+  minutes**, judged by the age of `/tmp/log/plugins/last_result.UNIFIAPI.log`
+  (rewritten only by a successful run), not by device last-seen times.
+  Verified with the wrong key: it reported 35 minutes on both its first look
+  and its retry.
 
 ## Unverified
 
-- What NetAlertX itself shows when the key is revoked.
 - The 24 h baseline and a real new-device push.
