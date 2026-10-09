@@ -45,9 +45,8 @@ redirect URIs also include `ghee://oauth/callback` (strict match), set
 through the API, so it lives in Authentik's database, not in this repo.
 Set Ghee's server URL with `https://`: Caddy answers `http` with a 308,
 and Ghee doesn't follow it for the token POST ("Authentication failed
-(308)"). If the browser stops on a blank or loading Authentik page after
-the password, close it and tap the login button again: with the session
-already open, the redirect back to the app goes through.
+(308)"). A blank Authentik tab left open after the login is normal (seen in
+Firefox and Chrome): Ghee is already signed in behind it. Close the tab.
 
 Three things broke on the way, each with a misleading symptom:
 
