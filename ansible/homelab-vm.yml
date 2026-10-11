@@ -208,6 +208,14 @@
       args:
         creates: ~/.local/bin/uv
 
+    # ~/.local/bin is on PATH only in a login shell; `ssh host 'uv ...'` is not one.
+    - name: uv and uvx on the non-login PATH
+      ansible.builtin.file:
+        src: "/home/{{ ansible_user }}/.local/bin/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        state: link
+      loop: [uv, uvx]
+
     - name: Apply handlers before the networks need Docker
       ansible.builtin.meta: flush_handlers
 
