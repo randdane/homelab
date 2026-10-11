@@ -64,7 +64,6 @@ a UI edit to those settings is undone by the next restart, on purpose.
   (rewritten only by a successful run), not by device last-seen times.
   Verified with the wrong key: it reported 35 minutes on both its first look
   and its retry.
-
-## Unverified
-
-- The 24 h baseline and a real new-device push.
+- **New-device pushes work.** Verified 2026-10-10: after a 24 h baseline,
+  deleting a known IoT device from NetAlertX made the next import re-add it
+  as new, and exactly one push reached the phone.
