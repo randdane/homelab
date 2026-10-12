@@ -105,6 +105,37 @@ ask PASSWORD "Duplicati backup passphrase" --secret
 # Credentials go in via the environment, not argv: argv is visible in `ps` to
 # every user on the box, and this drill exists to be run on a machine you do
 # not yet trust.
+# Which file step 3 restores, read from step 2's listing on stdin.
+# Duplicati lists a file as "/path/name (2.31 MiB)" and a folder as "/path/".
+# An archive (.tar.gz) wins, since that is what the data job holds; otherwise
+# the smallest file of at least 1 KiB: the first file in a photo library can be
+# a multi-gigabyte video, and an empty file has no blocks, so Duplicati
+# "restores" it as 0 files and the byte check below fails over a good backup
+# (photos drill, 2026-10-12). Paths may contain spaces. Tested in
+# test_recovery_drill.py: a pattern here once matched nothing and failed the
+# photos drill over a good backup.
+pick_target() {
+    local listing
+    listing="$(cat)"
+    local tgz
+    tgz="$(grep -oE '/[^[:space:]]*\.tar\.gz' <<<"$listing" | head -1 || true)"
+    if [ -n "$tgz" ]; then printf '%s\n' "$tgz"; return 0; fi
+    # Collected into a variable, then tested: under the script's pipefail,
+    # `sort | head -1` exits non-zero (SIGPIPE) even when it found a file, so
+    # chaining `&& return` fell through and appended the fallback's pick --
+    # a two-line path that matched nothing (photos drill, 2026-10-12).
+    local sized
+    sized="$(sed -nE 's#^[[:space:]]*(/.*[^/])[[:space:]]+\(([0-9.]+) ?([A-Za-z]*)\)[[:space:]]*$#\2\t\3\t\1#p' <<<"$listing" \
+      | awk -F'\t' '{ u = toupper(substr($2, 1, 1)); m = 1
+               if (u == "K") m = 1024; else if (u == "M") m = 1048576
+               else if (u == "G") m = 1073741824; else if (u == "T") m = 1099511627776
+               if ($1 * m >= 1024) printf "%.0f\t%s\n", $1 * m, $3 }' \
+      | sort -n | cut -f2- || true)"
+    if [ -n "$sized" ]; then printf '%s\n' "${sized%%$'\n'*}"; return 0; fi
+    # Last resort: a listing that prints bare file paths, no size.
+    grep -oE '^[[:space:]]*/.*[^/[:space:]]$' <<<"$listing" | sed 's/^[[:space:]]*//' | head -1 || true
+}
+
 run() {
     docker run --rm -i \
         -e AUTH_USERNAME="$KEYID" -e AUTH_PASSWORD="$APPKEY" \
@@ -195,11 +226,7 @@ echo "== 3. actually restore one file"
 # Prefer an archive; fall back to any listed path. Trailing "/" is excluded
 # because a directory restores as an empty tree and the byte check below would
 # then fail for a reason that has nothing to do with the backup.
-TARGET="$(grep -oE '/[^[:space:]]*\.tar\.gz' "$WORK/files.txt" | head -1 || true)"
-if [ -z "$TARGET" ]; then
-    TARGET="$(grep -oE '^[[:space:]]*/[^[:space:]]*[^/[:space:]]$' "$WORK/files.txt" \
-              | sed 's/^[[:space:]]*//' | head -1 || true)"
-fi
+TARGET="$(pick_target < "$WORK/files.txt")"
 if [ -z "$TARGET" ]; then
     sed 's/^/   /' "$WORK/files.txt"
     echo "   FAILED -- nothing in the listing looked like a file path, so" >&2

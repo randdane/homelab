@@ -29,8 +29,7 @@ Recovery has a **circular dependency**, and this is the part that bites:
   `stacks/duplicati/.env`, which **is not backed up by anything**
 
 So these must exist outside the homelab, in a password manager — an external
-one. Vaultwarden is in this repo but is `lifecycle: planned` and has never
-run, so it is not the answer here and would be the wrong answer even deployed:
+one. A self-hosted vault was considered and rejected for exactly this reason:
 a password manager that lives in the lab cannot help you recover the lab.
 
 The "Lives in" column is where the value exists *today*, which for the first three is
@@ -38,7 +37,7 @@ somewhere you cannot reach after a disk failure — that is the whole point:
 
 | Secret | Lives in | Needed for |
 |---|---|---|
-| **B2 bucket and path**, one per job | Duplicati's `TargetURL`, in `Duplicati-server.sqlite` | naming the bucket at all |
+| **B2 bucket and path**, one per job (two jobs, two buckets: data and photos) | Duplicati's `TargetURL`, in `Duplicati-server.sqlite` | naming the bucket at all |
 | B2 application key ID + secret, one per bucket | same `TargetURL` | reaching the bucket |
 | Duplicati restore **passphrase**, one per job | Duplicati settings, same DB — masked in API *responses*, but readable back off a running server (see [Reading the passphrase back](#reading-the-passphrase-back-off-a-running-server)) | decrypting the archives |
 | `SETTINGS_ENCRYPTION_KEY` | `stacks/duplicati/.env` | reading Duplicati's own config DB |
@@ -76,6 +75,8 @@ is the finding.
 |---|---|
 | 2026-08-27, from the laptop | **PASS.** 7 versions listed, 10 files in the newest, restored `homelab-2026-08-21T17-23-46.tar.gz` — 9,575,584 bytes, valid gzip, 81 members. Password manager alone was enough. |
 | 2026-09-03, from the laptop at home | **PASS.** Ran clean end to end on the password-manager-only path. Surfaced one real defect — the drill could not delete what it restored; see below. |
+| 2026-10-12, from the laptop at home, **data** bucket | **PASS**, after correcting the password manager: its entry had the path `…/homelab` (the job writes `…/duplicati`) and a key the bucket refused (401). The drill caught exactly what it exists to catch. |
+| 2026-10-12, from the laptop at home, **photos** bucket | **PASS** on the third run. The first two failed in the drill, not the backup: the step-3 file pick could not read `path (size)` lines, then under `pipefail` returned two paths glued together, which matched nothing ("0 files need to be restored"). Fixed and tested under the script's own shell options; it now restores the smallest file of at least 1 KiB. |
 | 2026-09-02, from the laptop on a foreign wifi | **INCONCLUSIVE — not a failure.** Step 1 died in the TLS handshake to `api.backblazeb2.com`, so no credential was ever transmitted. `curl` reproduced it host-side and in a container: `rc=35`, `ssl_verify_result=1`, six for six, ~0.53 s each. The network intercepts or blocks B2. |
 
 **The second run is in this table because of what the script said, not what

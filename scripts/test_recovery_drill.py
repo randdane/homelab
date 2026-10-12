@@ -131,3 +131,63 @@ exit 0'''],
     assert proc.returncode == 0
     assert work.exists(), "DRILL_KEEP must keep the directory"
     assert "DECRYPTED" in proc.stdout
+
+
+# --- pick_target(): which file step 3 restores ------------------------------
+#
+# The photos drill failed on 2026-10-12 over a good backup: its listing held
+# "/path/file.jpg (2.31 MiB)" lines, and the fallback pattern demanded the path
+# run to end of line. The data bucket never reached the fallback (its .tar.gz
+# matched first), so one bucket passing proved nothing about the other.
+
+def _pick(listing):
+    lines = SCRIPT.read_text().splitlines()
+    start = next(i for i, l in enumerate(lines) if l.startswith("pick_target()"))
+    end = next(i for i in range(start, len(lines)) if lines[i] == "}")
+    src = "\n".join(lines[start:end + 1])
+    # Under the script's own shell options: without pipefail the function
+    # once passed every test here and still returned two lines in the drill.
+    out = subprocess.run(["bash", "-c", "set -euo pipefail\n" + src + "\npick_target"], input=listing,
+                         capture_output=True, text=True, check=True)
+    return out.stdout.strip()
+
+
+PHOTOS = (
+    "Listing contents 0 (10/12/2026 03:14:07):\n"
+    "/source-photos/upload/7a1b/ff/f1/\n"
+    "/source-photos/upload/7a1b/ff/f1/big video.mp4 (1.87 GiB)\n"
+    "/source-photos/upload/7a1b/ff/f1/IMG 0001.jpg (2.31 MiB)\n"
+    "/source-photos/upload/7a1b/ff/f5/empty.xmp (0 bytes)\n"
+    "/source-photos/upload/7a1b/ff/f5/small.json (412 bytes)\n"
+    "/source-photos/upload/7a1b/ff/f5/thumb.webp (14.2 KiB)\n"
+    "/source-photos/upload/7a1b/ff/fd/\n"
+)
+
+
+def test_photos_listing_picks_the_smallest_real_file_not_a_folder():
+    # Not the empty file (0 files restored) nor one under 1 KiB.
+    assert _pick(PHOTOS) == "/source-photos/upload/7a1b/ff/f5/thumb.webp"
+
+
+def test_paths_with_spaces_survive():
+    assert _pick("/a/b/IMG 0001.jpg (2.31 MiB)\n/a/b/big video.mp4 (1.87 GiB)\n") \
+        == "/a/b/IMG 0001.jpg"
+
+
+def test_an_archive_still_wins_for_the_data_bucket():
+    listing = "/source/x.json (2 KiB)\n/source/backups/homelab-2026-10-12.tar.gz (9.13 MiB)\n"
+    assert _pick(listing) == "/source/backups/homelab-2026-10-12.tar.gz"
+
+
+def test_folders_only_picks_nothing():
+    assert _pick("/source-photos/a/\n/source-photos/b/\n") == ""
+
+
+def test_a_listing_without_sizes_still_finds_a_file():
+    assert _pick("/source-photos/a/\n/source-photos/a/IMG 0001.jpg\n") == "/source-photos/a/IMG 0001.jpg"
+
+
+def test_exactly_one_line_even_with_many_candidates():
+    # 18,331 listed lines in the real photos bucket; the pick must be one path.
+    many = "".join(f"/p/f{i}.jpg ({i + 2} KiB)\n" for i in range(5000))
+    assert _pick(many) == "/p/f0.jpg"
