@@ -665,3 +665,27 @@ a host that already drifted:
 ```bash
 chmod 600 stacks/*/.env
 ```
+
+## Audit the fleet against the docs
+
+Once hosts are running, `scripts/host_audit.py` (run from the workstation, read-only)
+checks that reality still matches what is written down:
+
+```bash
+uv run scripts/host_audit.py                 # ~1.5 min: hosts, router, every playbook in --check
+uv run scripts/host_audit.py --no-playbooks  # seconds: hosts and router only
+```
+
+- **devices.md:** each host's probes (OS, versions, RAM, CPU, MACs) must
+  appear in its row. Which probes run where is `$SITE_DIR/audit/hosts.toml`;
+  list only facts the row records, or every run reports drift.
+- **Addresses:** the router's client list, matched by MAC against every
+  table row that names it. The router's self-signed certificate is pinned by
+  fingerprint in `hosts.toml`; if the router regenerates it, the report says
+  the list is unavailable until the pin is updated.
+- **Config:** each playbook in `--check`; any task that would change is
+  ranked high, with the apply command under "Run these yourself".
+
+The report is printed and saved to `${XDG_DATA_HOME:-~/.local/share}/_r_/host-audit/<date>.md`.
+It exits 1 when anything ranks medium or high. A host that is off is "not
+checked", unless `hosts.toml` marks it `always_on`, which ranks it high.
