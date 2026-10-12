@@ -80,6 +80,20 @@ else
     log "local archive done"
 fi
 
+# Stack .env files hold the database passwords the restored volumes expect,
+# and nothing else carried them offsite. Copied beside the archives so the
+# offsite-data job's /source-state picks them up, encrypted. Rebuilt each run
+# so a removed stack's secrets do not linger.
+if [ "$VERIFY" = 0 ] && [ "$DRY" = 0 ]; then
+    ENV_COPY="${XDG_STATE_HOME:-$HOME/.local/state}/homelab/env-files"
+    rm -rf "$ENV_COPY"
+    install -d -m 700 "$ENV_COPY"
+    (cd "$REPO/stacks" && cp --parents -p ./*/.env "$ENV_COPY/") \
+        || fail "copying stack .env files failed"
+    chmod 700 "$ENV_COPY"   # cp -p copied stacks/'s 775 onto it
+    log "copied $(find "$ENV_COPY" -name .env | wc -l) stack .env files"
+fi
+
 # --- offsite ---------------------------------------------------------------
 # Duplicati's own scheduler is disabled for these jobs; this is the only
 # trigger. Keeping both would double-run it.

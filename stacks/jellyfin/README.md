@@ -113,3 +113,10 @@ house and check which address was logged:
 
 It must show the client's real address. Caddy's host address means it is broken, and
 that per-IP lockout is counting the entire internet as one address.
+
+## Backups: onsite only, by choice
+
+CT 102 is in vzdump (nightly to `tank-backups`, weekly to the backup server) and
+nothing sends it offsite. Accepted 2026-10-12: users come from LDAP and the
+library rescans from `/tank/media`, so a rebuild from scratch loses only
+watch history and per-user settings (`/var/lib/jellyfin`, ~4 MB).

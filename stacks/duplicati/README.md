@@ -165,6 +165,11 @@ every archive is backed up twice. The job's sources and filters are:
 | Sources | `/source/`, `/source-state/` |
 | Filter | exclude `/source-state/backups/` |
 
+`/source-state/env-files/` holds a copy of every stack's `.env`, rebuilt by
+`scripts/run_backups.sh` before each run (since 2026-10-12). Those files
+hold the database passwords the restored volumes expect, and were otherwise
+on the VM disk only, which vzdump keeps onsite.
+
 **That filter lives in Duplicati's own database, not in this repo**, which is
 the one genuinely fragile part of this arrangement — restoring Duplicati from
 a bare `config` volume does not bring it back. Check it after any rotation or
