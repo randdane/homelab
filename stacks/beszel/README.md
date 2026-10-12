@@ -83,8 +83,10 @@ from `stacks/ntfy/.env` as the basic-auth password:
 | Temperature | pve | 90 °C, 5 min | package ~44 °C, peaks 82 °C |
 
 No CPU alert: homelab hits 100 % in routine jobs. The pve disk alert
-covers `tank` through `EXTRA_FILESYSTEMS=/tank` in
-`/etc/homelab/beszel-agent.env`; Beszel labels it `sda1` (14 % on 2026-10-12).
+covers `tank` with no setting: the agent finds ZFS pools itself (the
+"storage pool" charts) and the Disk alert checks them. Don't add `/tank` to
+`EXTRA_FILESYSTEMS`; that draws a duplicate "tank Usage" chart whose I/O
+stays at zero. `tank` was at 14 % on 2026-10-12.
 Test notification confirmed on the phone 2026-10-12.
 
 ## What will bite you
