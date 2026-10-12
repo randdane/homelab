@@ -82,8 +82,10 @@ from `stacks/ntfy/.env` as the basic-auth password:
 | Memory | both | 90 %, 10 min | homelab peaks 74 %, pve 51 % |
 | Temperature | pve | 90 °C, 5 min | package ~44 °C, peaks 82 °C |
 
-No CPU alert: homelab hits 100 % in routine jobs. `tank` is not covered
-unless the pve agent reports it (`EXTRA_FILESYSTEMS`).
+No CPU alert: homelab hits 100 % in routine jobs. The pve disk alert
+covers `tank` through `EXTRA_FILESYSTEMS=/tank` in
+`/etc/homelab/beszel-agent.env`; Beszel labels it `sda1` (14 % on 2026-10-12).
+Test notification confirmed on the phone 2026-10-12.
 
 ## What will bite you
 
