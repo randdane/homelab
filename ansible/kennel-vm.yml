@@ -88,7 +88,10 @@
       vars:
         fw_want: "{{ lookup('file', fw_src) }}\n"
       when: (fw_live.content | default('') | b64decode) != fw_want
-      ansible.builtin.shell: cat >| /etc/pve/firewall/{{ vm.vmid }}.fw
+      # Shell tasks are skipped under --check, which hid drift here (pve-host.yml
+      # found 200.fw stale). In check mode this runs `true`, reporting the change.
+      ansible.builtin.shell: "{{ 'true' if ansible_check_mode else 'cat >| /etc/pve/firewall/' ~ vm.vmid ~ '.fw' }}"
+      check_mode: false
       args:
         stdin: "{{ fw_want }}"
         stdin_add_newline: false
