@@ -68,6 +68,23 @@ Two failures on the way, both silent in the UI (a blank page):
 
 Verified 2026-10-05: one user, one `oidc` external auth, `auth-with-oauth2` 200.
 
+## Alerts
+
+To ntfy topic `homelab-alerts`, set 2026-10-12 from a day of history.
+Notification URL (Settings → Notifications), the token being `NTFY_TOKEN`
+from `stacks/ntfy/.env` as the basic-auth password:
+`ntfy://:<token>@ntfy:80/homelab-alerts?scheme=http&title=Beszel`.
+
+| Alert | Hosts | Threshold | Normal |
+|---|---|---|---|
+| Status down | both | 2 min | — |
+| Disk | both | 85 %, 10 min | homelab 69 %, pve root 10 % |
+| Memory | both | 90 %, 10 min | homelab peaks 74 %, pve 51 % |
+| Temperature | pve | 90 °C, 5 min | package ~44 °C, peaks 82 °C |
+
+No CPU alert: homelab hits 100 % in routine jobs. `tank` is not covered
+unless the pve agent reports it (`EXTRA_FILESYSTEMS`).
+
 ## What will bite you
 
 - **`data` is backed up; `agent-data` and `socket` are not.** Losing the
