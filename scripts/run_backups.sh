@@ -81,13 +81,17 @@ else
 fi
 
 # --- offsite ---------------------------------------------------------------
-# Duplicati's own scheduler is disabled for this job; this is the only
+# Duplicati's own scheduler is disabled for these jobs; this is the only
 # trigger. Keeping both would double-run it.
 if [ ! -f "$DUPLICATI_ENV" ]; then
     fail "no $DUPLICATI_ENV -- cannot authenticate to Duplicati"
 fi
 PW="$(grep -E '^WEBSERVICE_PASSWORD=' "$DUPLICATI_ENV" | cut -d= -f2-)"
 [ -n "$PW" ] || fail "WEBSERVICE_PASSWORD is empty in $DUPLICATI_ENV"
+# Which Duplicati job IDs to run, space-separated. Site data, so it lives in
+# the .env beside the password; IDs change whenever a job is recreated.
+JOBS="$(grep -E '^DUPLICATI_JOBS=' "$DUPLICATI_ENV" | cut -d= -f2- | tr -d '"' || true)"
+JOBS="${JOBS:-1}"
 
 # Duplicati carries docker-volume-backup.stop-during-backup=true, so the
 # archive step above just stopped and restarted it. Its web service needs a
@@ -121,25 +125,42 @@ except Exception:
 
 if [ "$DRY" = 1 ]; then
     if [ "$VERIFY" = 1 ]; then
-        log "dry-run: authenticated OK; would POST /api/v1/backup/1/verify"
+        log "dry-run: authenticated OK; would verify job(s) $JOBS"
     else
-        log "dry-run: authenticated OK; would POST /api/v1/backup/1/run"
+        log "dry-run: authenticated OK; would run job(s) $JOBS"
     fi
     log "dry-run: all prerequisites present"
     exit 0
 fi
 
-if [ "$VERIFY" = 1 ]; then
-    # The only check that reads the remote bytes back. status.py asks how OLD
-    # the newest archive is, which a nightly run producing corrupt output
-    # passes perfectly.
-    TASK="$(curl -sf -m 20 -X POST "$DUPLICATI_URL/api/v1/backup/1/verify" \
-        -H "Authorization: Bearer $TOKEN" \
-        | python3 -c 'import json,sys
+# Task id from a POST's response body, or "" if it is unreadable.
+task_id() {
+    python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("ID",""))
-except Exception: print("")' 2>/dev/null || echo "")"
-    [ -n "$TASK" ] || fail "could not start the verify task"
-    log "verify task $TASK started"
+except Exception: print("")' 2>/dev/null || echo ""
+}
+
+# "<Status> <ErrorMessage or ->" from a task body; " -" if unreadable.
+task_status() {
+    python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print(d.get("Status", ""), (d.get("ErrorMessage") or "-"))
+except Exception:
+    print("", "-")
+' 2>/dev/null
+}
+
+# The only check that reads the remote bytes back. status.py asks how OLD
+# the newest archive is, which a nightly run producing corrupt output
+# passes perfectly.
+verify_job() {
+    local TASK BODY STATUS ERRMSG
+    TASK="$(curl -sf -m 20 -X POST "$DUPLICATI_URL/api/v1/backup/$1/verify" \
+        -H "Authorization: Bearer $TOKEN" | task_id)"
+    [ -n "$TASK" ] || { log "FAILED: job $1: could not start the verify task"; return 1; }
+    log "job $1: verify task $TASK started"
 
     # Poll the TASK, not /progressstate. progressstate still reports
     # Phase=Verify_Running after the task has finished -- measured on the first server
@@ -149,81 +170,85 @@ except Exception: print("")' 2>/dev/null || echo "")"
     for _ in $(seq 1 120); do
         BODY="$(curl -sf -m 20 "$DUPLICATI_URL/api/v1/task/$TASK" \
             -H "Authorization: Bearer $TOKEN" || true)"
-        read -r STATUS ERRMSG <<<"$(printf '%s' "$BODY" | python3 -c '
-import json, sys
-try:
-    d = json.load(sys.stdin)
-    print(d.get("Status", ""), (d.get("ErrorMessage") or "-"))
-except Exception:
-    print("", "-")
-' 2>/dev/null)"
+        read -r STATUS ERRMSG <<<"$(printf '%s' "$BODY" | task_status)"
         case "$STATUS" in
             Completed)
                 if [ "$ERRMSG" != "-" ]; then
-                    fail "verify completed with an error: $ERRMSG"
+                    log "FAILED: job $1: verify completed with an error: $ERRMSG"
+                    return 1
                 fi
-                log "verify OK -- the offsite copy downloads, decrypts and hashes clean"
-                exit 0
+                log "job $1: verify OK -- the offsite copy downloads, decrypts and hashes clean"
+                return 0
                 ;;
             Failed|Aborted)
-                fail "verify task $TASK ended $STATUS: $ERRMSG"
+                log "FAILED: job $1: verify task $TASK ended $STATUS: $ERRMSG"
+                return 1
                 ;;
         esac
         sleep 10
     done
-    fail "verify task $TASK did not finish within 20 minutes"
-fi
+    log "FAILED: job $1: verify task $TASK did not finish within 20 minutes"
+    return 1
+}
 
-log "triggering offsite job"
-TASK="$(curl -sf -m 20 -X POST "$DUPLICATI_URL/api/v1/backup/1/run" \
-    -H "Authorization: Bearer $TOKEN" \
-    | python3 -c 'import json,sys
-try: print(json.load(sys.stdin).get("ID",""))
-except Exception: print("")' 2>/dev/null || echo "")"
-[ -n "$TASK" ] || fail "could not start the offsite job"
-log "offsite task $TASK started"
+run_job() {
+    local TASK BODY STATUS ERRMSG UNREADABLE=0
+    TASK="$(curl -sf -m 20 -X POST "$DUPLICATI_URL/api/v1/backup/$1/run" \
+        -H "Authorization: Bearer $TOKEN" | task_id)"
+    [ -n "$TASK" ] || { log "FAILED: job $1: could not start the offsite job"; return 1; }
+    log "job $1: offsite task $TASK started"
 
-# Poll the task, as --verify does. This used to poll /progressstate and treat
-# an empty phase as finished -- but a failed request or unreadable body is
-# also empty, so a dead Duplicati reported "offsite job finished" and exit 0.
-# Only an explicit Completed counts; a run of unreadable answers is a failure.
-UNREADABLE=0
-for _ in $(seq 1 240); do
-    BODY="$(curl -sf -m 20 "$DUPLICATI_URL/api/v1/task/$TASK" \
-        -H "Authorization: Bearer $TOKEN" || true)"
-    read -r STATUS ERRMSG <<<"$(printf '%s' "$BODY" | python3 -c '
-import json, sys
-try:
-    d = json.load(sys.stdin)
-    print(d.get("Status", ""), (d.get("ErrorMessage") or "-"))
-except Exception:
-    print("", "-")
-' 2>/dev/null)"
-    case "$STATUS" in
-        Completed)
-            if [ "$ERRMSG" != "-" ]; then
-                fail "offsite task $TASK completed with an error: $ERRMSG"
-            fi
-            log "offsite task $TASK completed"
-            exit 0
-            ;;
-        Failed|Aborted)
-            fail "offsite task $TASK ended $STATUS: $ERRMSG"
-            ;;
-        # An unreadable body prints " -", and read strips the leading space,
-        # so STATUS arrives as "-" rather than empty.
-        ""|-)
-            UNREADABLE=$((UNREADABLE + 1))
-            # 8 x 15 s: long enough to ride out a restart, short enough that
-            # a dead Duplicati is not mistaken for a slow upload for an hour.
-            if [ "$UNREADABLE" -ge 8 ]; then
-                fail "offsite task $TASK: no readable status for 2 minutes"
-            fi
-            ;;
-        *)
-            UNREADABLE=0
-            ;;
-    esac
-    sleep "${POLL_SECONDS:-15}"
+    # Poll the task, as --verify does. This used to poll /progressstate and treat
+    # an empty phase as finished -- but a failed request or unreadable body is
+    # also empty, so a dead Duplicati reported "offsite job finished" and exit 0.
+    # Only an explicit Completed counts; a run of unreadable answers is a failure.
+    for _ in $(seq 1 240); do
+        BODY="$(curl -sf -m 20 "$DUPLICATI_URL/api/v1/task/$TASK" \
+            -H "Authorization: Bearer $TOKEN" || true)"
+        read -r STATUS ERRMSG <<<"$(printf '%s' "$BODY" | task_status)"
+        case "$STATUS" in
+            Completed)
+                if [ "$ERRMSG" != "-" ]; then
+                    log "FAILED: job $1: offsite task $TASK completed with an error: $ERRMSG"
+                    return 1
+                fi
+                log "offsite task $TASK completed"
+                return 0
+                ;;
+            Failed|Aborted)
+                log "FAILED: job $1: offsite task $TASK ended $STATUS: $ERRMSG"
+                return 1
+                ;;
+            # An unreadable body prints " -", and read strips the leading space,
+            # so STATUS arrives as "-" rather than empty.
+            ""|-)
+                UNREADABLE=$((UNREADABLE + 1))
+                # 8 x 15 s: long enough to ride out a restart, short enough that
+                # a dead Duplicati is not mistaken for a slow upload for an hour.
+                if [ "$UNREADABLE" -ge 8 ]; then
+                    log "FAILED: job $1: offsite task $TASK: no readable status for 2 minutes"
+                    return 1
+                fi
+                ;;
+            *)
+                UNREADABLE=0
+                ;;
+        esac
+        sleep "${POLL_SECONDS:-15}"
+    done
+    log "FAILED: job $1: offsite task $TASK did not finish within an hour"
+    return 1
+}
+
+# Every job is attempted even if an earlier one fails, so a broken photos
+# job cannot stop the small data job from leaving the building.
+FAILED=0
+for JOB in $JOBS; do
+    if [ "$VERIFY" = 1 ]; then
+        verify_job "$JOB" || FAILED=$((FAILED + 1))
+    else
+        log "triggering offsite job $JOB"
+        run_job "$JOB" || FAILED=$((FAILED + 1))
+    fi
 done
-fail "offsite task $TASK did not finish within an hour"
+[ "$FAILED" = 0 ] || fail "$FAILED of the offsite job(s) [$JOBS] failed -- see above"
