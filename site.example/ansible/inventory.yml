@@ -7,6 +7,34 @@ all:
           ansible_host: 10.0.0.10
           ansible_user: root
           ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          # pve-host.yml
+          pve_smart_disks:
+            - ata-EXAMPLE_DISK_SERIAL1
+            - ata-EXAMPLE_DISK_SERIAL2
+            - nvme-EXAMPLE_NVME_SERIAL
+          pve_lxc_security_only: [102]
+          pve_dir_storages:
+            - { id: tank-backups, path: /tank/backups }
+          pve_backup_jobs:
+            - id: nightly
+              opts:
+                schedule: "01:30"
+                storage: tank-backups
+                vmid: "101,102"
+                mode: snapshot
+                compress: zstd
+                notes-template: !unsafe "{{guestname}}"
+                prune-backups: keep-daily=7,keep-weekly=4
+                enabled: 1
+            - id: weekly-offsite        # optional: a PBS storage you added by hand
+              hook: weekly-hook.sh      # copied from $SITE_DIR/pve/
+              opts:
+                schedule: sun 04:15
+                storage: my-pbs
+                vmid: "101,102"
+                mode: snapshot
+                script: /usr/local/bin/weekly-hook.sh
+                enabled: 1
     docker_vms:
       hosts:
         homelab:

@@ -1,0 +1,239 @@
+# The Proxmox host's own config: the parts that drift in silence. Rerunnable;
+# every step compares before it writes. Each is a step in $SITE_DIR/docs/pve-log.md.
+#
+#   cd ansible
+#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" pve-host.yml --check --diff   # dry run
+#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" pve-host.yml
+#
+# To adapt it, set these on your proxmox host in the inventory (site.example
+# has a filled-in copy):
+#   pve_smart_disks         /dev/disk/by-id names for the monthly SMART report
+#   pve_lxc_security_only   CT ids that get security-only unattended upgrades
+#   pve_dir_storages        directory storages for backups (created if missing)
+#   pve_backup_jobs         vzdump jobs: id, options as pvesh takes them, and an
+#                           optional hook script from $SITE_DIR/pve/
+# and put one <vmid>.fw per guest in $SITE_DIR/pve/firewall/.
+#
+# Before the first run, by hand, because they hold secrets:
+#   - /etc/homelab/ntfy.env (NTFY_URL, NTFY_TOKEN, NTFY_TOPIC; mode 600)
+#   - any PBS storage and the ntfy notification target (pve-log has both)
+#
+# NOT done here, on purpose:
+#   - unattended upgrades on the host itself: `apt full-upgrade` by hand
+#   - BIOS, AMT, NIC, disks and the ZFS pool -- hardware, once per machine
+#   - creating CTs -- they come back from backup
+
+- name: Proxmox host config
+  hosts: proxmox
+  vars:
+    scripts: /usr/local/lib/homelab/scripts
+    # Shell and command tasks are skipped under --check, which hid drift. The
+    # writes below run in check mode as this no-op instead, so a dry run
+    # reports every file or job that would change.
+    noop: "true"
+    site_pve: "{{ inventory_dir }}/../pve"
+    pve_cluster_fw: "[OPTIONS]\nenable: 1\npolicy_in: ACCEPT\npolicy_out: ACCEPT\n"
+    # The host itself stays open: the guests' .fw files are the firewall.
+    pve_host_fw: "[OPTIONS]\nenable: 0\n"
+    security_only: |
+      #clear Unattended-Upgrade::Origins-Pattern;
+      Unattended-Upgrade::Origins-Pattern { "origin=Debian,codename=${distro_codename}-security,label=Debian-Security"; };
+    auto_upgrades: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+  handlers:
+    - name: Restart smartd
+      ansible.builtin.systemd_service:
+        name: smartmontools
+        state: restarted
+        daemon_reload: true
+  tasks:
+    # --- SMART (docs/smart.md) ---
+    - name: ntfy credentials exist (made by hand, see header)
+      ansible.builtin.stat:
+        path: /etc/homelab/ntfy.env
+      register: ntfy_env
+      failed_when: not ntfy_env.stat.exists
+
+    - name: Scripts directory
+      ansible.builtin.file:
+        path: "{{ scripts }}"
+        state: directory
+        mode: "0755"
+
+    - name: SMART and notify scripts, from the repo
+      ansible.builtin.copy:
+        src: ../scripts/{{ item }}
+        dest: "{{ scripts }}/{{ item }}"
+        mode: "{{ '0644' if item.endswith('.py') else '0755' }}"
+      loop: [smart-alert.sh, smart-report.sh, notify.py]
+
+    - name: smartd finds the credentials
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/smartmontools.service.d/homelab.conf
+        content: "[Service]\nEnvironment=HOMELAB_NOTIFY_ENV=/etc/homelab/ntfy.env\n"
+        mode: "0644"
+      notify: Restart smartd
+
+    - name: smartd alerts through ntfy, not mail to root
+      ansible.builtin.lineinfile:
+        path: /etc/smartd.conf
+        regexp: "^DEVICESCAN"
+        line: DEVICESCAN -d removable -n standby -m root -M exec {{ scripts }}/smart-alert.sh
+      notify: Restart smartd
+
+    - name: Monthly SMART heartbeat units
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: /etc/systemd/system/{{ item.dest }}
+        mode: "0644"
+      loop:
+        - { src: templates/pve-smart.service.j2, dest: pve-smart.service }
+        - { src: ../scripts/systemd/pve-smart.timer, dest: pve-smart.timer }
+
+    - name: Heartbeat timer enabled
+      ansible.builtin.systemd_service:
+        name: pve-smart.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    # --- Firewall ---
+    # pmxcfs refuses chmod and rename, so copy cannot write here (see
+    # kennel-vm.yml). Read, compare, plain write.
+    - name: Firewall files wanted
+      ansible.builtin.set_fact:
+        fw_files: >-
+          {%- set l = [] -%}
+          {%- for f in query('fileglob', site_pve + '/firewall/*.fw') -%}
+            {{- l.append({'dest': '/etc/pve/firewall/' + (f | basename), 'src': f}) -}}
+          {%- endfor -%}
+          {{ l + [{'dest': '/etc/pve/firewall/cluster.fw', 'text': pve_cluster_fw},
+                  {'dest': '/etc/pve/nodes/' + inventory_hostname + '/host.fw', 'text': pve_host_fw}] }}
+
+    - name: Firewall files now on pve
+      ansible.builtin.slurp:
+        src: "{{ item.dest }}"
+      loop: "{{ fw_files }}"
+      register: fw_live
+      failed_when: false
+
+    - name: Firewall files, written from the site repo
+      vars:
+        want: "{{ item.item.text if 'text' in item.item else lookup('file', item.item.src) + '\n' }}"
+      when: (item.content | default('') | b64decode) != want
+      ansible.builtin.shell: "{{ noop if ansible_check_mode else 'cat >| ' + item.item.dest }}"
+      check_mode: false
+      args:
+        stdin: "{{ want }}"
+        stdin_add_newline: false
+      loop: "{{ fw_live.results }}"
+      loop_control:
+        label: "{{ item.item.dest }}"
+
+    # A rule that fails to parse is dropped and the rest load: "running", with
+    # holes (pve-log, 2026-09-19).
+    - name: Every rule parsed
+      ansible.builtin.shell: pve-firewall compile 2>&1 | grep -i 'unable to parse' || true
+      register: fw_parse
+      changed_when: false
+      check_mode: false
+      failed_when: fw_parse.stdout != ''
+
+    # --- Security-only unattended upgrades in CTs ---
+    - name: unattended-upgrades in each CT
+      ansible.builtin.command: pct exec {{ item }} -- dpkg-query -W unattended-upgrades
+      loop: "{{ pve_lxc_security_only | default([]) }}"
+      register: uu_pkg
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: unattended-upgrades, installed if missing
+      when: item.rc != 0
+      ansible.builtin.command:
+        argv: "{{ [noop] if ansible_check_mode else ['pct', 'exec', item.item | string, '--', 'sh', '-c', 'apt-get update -qq && apt-get install -y -qq unattended-upgrades'] }}"
+      check_mode: false
+      loop: "{{ uu_pkg.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: apt config now in each CT
+      ansible.builtin.command: pct exec {{ item.0 }} -- cat /etc/apt/apt.conf.d/{{ item.1.name }}
+      loop: "{{ pve_lxc_security_only | default([]) | product([{'name': '20auto-upgrades', 'text': auto_upgrades}, {'name': '52homelab-security-only', 'text': security_only}]) | list }}"
+      register: uu_live
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: apt config, security origin only
+      when: item.stdout + '\n' != item.item.1.text
+      ansible.builtin.command:
+        argv: "{{ [noop] if ansible_check_mode else ['pct', 'exec', item.item.0 | string, '--', 'sh', '-c', 'cat >| /etc/apt/apt.conf.d/' + item.item.1.name] }}"
+      check_mode: false
+      args:
+        stdin: "{{ item.item.1.text }}"
+        stdin_add_newline: false
+      loop: "{{ uu_live.results }}"
+      loop_control:
+        label: "{{ item.item.0 }} {{ item.item.1.name }}"
+
+    # --- Backups ---
+    # ponytail: created when missing, not compared; change one with pvesm set.
+    - name: Backup storages now defined
+      ansible.builtin.command: pvesh get /storage/{{ item.id }} --output-format json
+      loop: "{{ pve_dir_storages | default([]) }}"
+      register: st_live
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Backup storages, created if missing
+      when: item.rc != 0
+      check_mode: false
+      ansible.builtin.command: >-
+        {{ noop if ansible_check_mode else '' }} pvesm add dir {{ item.item.id }} --path {{ item.item.path }} --content backup
+        --is_mountpoint {{ item.item.is_mountpoint | default('yes') }}
+      loop: "{{ st_live.results }}"
+      loop_control:
+        label: "{{ item.item.id }}"
+
+    - name: Backup hook scripts, from the site repo
+      ansible.builtin.copy:
+        src: "{{ site_pve }}/{{ item.hook }}"
+        dest: "{{ item.opts.script }}"
+        mode: "0755"
+      loop: "{{ pve_backup_jobs | default([]) | selectattr('hook', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.id }}"
+
+    - name: Backup jobs now defined
+      ansible.builtin.command: pvesh get /cluster/backup/{{ item.id }} --output-format json
+      loop: "{{ pve_backup_jobs | default([]) }}"
+      register: jobs_live
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    # pvesh returns prune-backups as a map; the inventory writes it the way
+    # pvesh takes it, k=v,k=v. Compare only the keys the inventory sets.
+    - name: Backup jobs, created or corrected
+      vars:
+        live: "{{ (item.stdout | from_json) if item.rc == 0 else {} }}"
+        drift: >-
+          {%- set d = [] -%}
+          {%- for k, v in item.item.opts.items() -%}
+            {%- set l = live.get(k, '') -%}
+            {%- if l is mapping -%}{%- set l = l.items() | map('join', '=') | sort | join(',') -%}{%- endif -%}
+            {%- if (l | string) != (v | string) -%}{{ d.append(k) }}{%- endif -%}
+          {%- endfor -%}{{ d }}
+        pvesh_args: "{{ item.item.opts | dict2items | map(attribute='key') | map('regex_replace', '^', '--') | zip(item.item.opts.values() | map('string')) | flatten }}"
+      when: drift | length > 0
+      ansible.builtin.command:
+        argv: "{{ [noop] if ansible_check_mode else
+                  (['pvesh', 'set', '/cluster/backup/' + item.item.id] if item.rc == 0
+                   else ['pvesh', 'create', '/cluster/backup', '--id', item.item.id]) + pvesh_args }}"
+      check_mode: false
+      loop: "{{ jobs_live.results }}"
+      loop_control:
+        label: "{{ item.item.id }}"

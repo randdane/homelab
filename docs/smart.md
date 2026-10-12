@@ -23,23 +23,20 @@ dead address. Found 2026-08-28.
 
 **On `pve` the paths differ from the rest of this page**, which was written
 on an earlier Ubuntu host. The scripts live in `/usr/local/lib/homelab/scripts/`, not
-`/opt/homelab/scripts/`. `pve` has no checkout; files are copied from the repo
-with `scp`. `notify.py` reads `/etc/homelab/ntfy.env`, set with
+`/opt/homelab/scripts/`. `pve` has no checkout. `notify.py` reads `/etc/homelab/ntfy.env`, set with
 `HOMELAB_NOTIFY_ENV`, as a drop-in for `smartmontools` and directly in
-`pve-smart.service`. `ssh pve` is root, so drop the `sudo`.
+`pve-smart.service`.
 
 **`homelab-smart.timer` is not installed in the VM.** `install-systemd.sh`
 skips it under `systemd-detect-virt --vm`. It was replaced 2026-09-24,
 before its first run inside VM 101 could report on a disk that has no SMART
 data.
 
-Install or refresh on `pve`:
-
-```bash
-scp scripts/smart-report.sh scripts/smart-alert.sh scripts/notify.py pve:/usr/local/lib/homelab/scripts/
-scp scripts/systemd/pve-smart.service scripts/systemd/pve-smart.timer pve:/etc/systemd/system/
-ssh pve 'systemd-analyze verify /etc/systemd/system/pve-smart.* && systemctl daemon-reload && systemctl enable --now pve-smart.timer'
-```
+Install or refresh on `pve` with `ansible/pve-host.yml`: the scripts, the
+`smartd` line and drop-in, and both units. The disks the report reads are
+`pve_smart_disks` in the inventory, by `/dev/disk/by-id` name; the unit is
+rendered from `ansible/templates/pve-smart.service.j2`. `ntfy.env` holds a
+token and is made by hand first (the playbook's header says how).
 
 First run on `pve`, 2026-09-24: both disks PASSED. `/dev/sda` had 0
 reallocated, 0 pending and 0 uncorrectable sectors, at 772 h. `/dev/nvme0n1`
