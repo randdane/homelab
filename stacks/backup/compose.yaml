@@ -105,8 +105,6 @@ services:
       # This is also where the Obsidian vault lives, so it is not optional.
       - forgejo_forgejo-data:/backup/forgejo-data:ro
       - forgejo_pg-data:/backup/forgejo-pg:ro
-      # Play counts, ratings, playlists -- not regenerable by rescanning.
-      #- navidrome_data:/backup/navidrome:ro
       # Immich's database. The photos themselves go to B2 through Duplicati (stacks/immich/README.md).
       - immich_db-data:/backup/immich-pg:ro
       # Paperless: originals, search index, and metadata -- all three.
@@ -148,26 +146,10 @@ services:
       - uptime-kuma_data:/backup/uptime-kuma:ro
       # Bookmarks and their archived page snapshots.
       - karakeep_data:/backup/karakeep:ro
-      # Every note revision the plugin has synced.
-      #- obsidian-livesync_data:/backup/obsidian:ro
       # Job definitions and the block database incrementals depend on.
       - duplicati_config:/backup/duplicati:ro
-      # Flows plus the encrypted provider-key store.
-      #- flowise_data:/backup/flowise:ro
-      # The ebook library plus both tools' settings.
-      #- calibre_books:/backup/calibre-books:ro
-      #- calibre_config:/backup/calibre-config:ro
-      #- calibre_web-config:/backup/calibre-web-config:ro
-      # Invidious accounts and subscriptions.
-      #- invidious_postgres-data:/backup/invidious-pg:ro
       # Hand-entered stock, purchase history, chores.
       - grocy_config:/backup/grocy:ro
-      # Training history and uploaded exercise images.
-      #- wger_pg-data:/backup/wger-pg:ro
-      #- wger_media:/backup/wger-media:ro
-      # Every transaction, entered by hand, in both finance apps.
-      #- ghostfolio_pg-data:/backup/ghostfolio:ro
-      #- myfin_db-data:/backup/myfin:ro
       # ntfy's users and tokens. The message cache in the same volume is
       # disposable; auth.db is not.
       - ntfy_data:/backup/ntfy:ro

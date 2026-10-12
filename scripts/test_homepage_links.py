@@ -177,7 +177,9 @@ def test_port_check_reads_published_ports():
 # Every stack that has a tile. Below this, something has stopped being seen --
 # a label renamed, or a regex that no longer matches the line it is meant to.
 # A scan that quietly examines nothing reports success just as loudly.
-MIN_HREFS = 30
+# 22 real tiles on 2026-10-12, after nine never-run stacks were removed; the
+# floor sits just under that. Lower it with the stack count, never past it.
+MIN_HREFS = 20
 
 
 def test_every_href_in_the_repo_is_well_formed():

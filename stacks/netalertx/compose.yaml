@@ -1,7 +1,7 @@
 name: netalertx
 
 x-homelab:
-  lifecycle: developing
+  lifecycle: production
   host: always-on
   exposure: lan
   # The known-device list. Losing it means a fresh 24 h baseline, not lost data.
