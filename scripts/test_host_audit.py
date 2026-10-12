@@ -195,3 +195,16 @@ def test_pinned_get_never_sends_the_key_to_another_cert(tls_server):
     with pytest.raises(ssl.SSLError, match="not the pinned one"):
         h.pinned_get(host, "00" * 32, "/x", {"X-API-KEY": "secret"})
     assert seen == []
+
+
+def test_alert_text_lists_worst_first_skips_low_and_names_the_report():
+    findings = [(h.LOW, "box", "doc drift", ""), (h.MEDIUM, "lamp", "address drift", ""),
+                (h.HIGH, "pve", "firewall drift", "")]
+    text = h.alert_text(findings, "/r/2026-10-12.md")
+    assert text.splitlines() == ["high: pve: firewall drift", "medium: lamp: address drift",
+                                 "Report: /r/2026-10-12.md"]
+
+
+def test_alert_text_caps_the_list():
+    findings = [(h.HIGH, f"h{i}", "x", "") for i in range(8)]
+    assert "...and 3 more" in h.alert_text(findings, "r")

@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly homelab audit
+
+[Timer]
+# Sunday afternoon, clear of the early-morning backup window. The laptop is often
+# off or asleep, so Persistent= runs a missed week at the next boot or login.
+OnCalendar=Sun 14:00
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

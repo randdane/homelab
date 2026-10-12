@@ -1,0 +1,22 @@
+# Weekly fleet audit (scripts/host_audit.py). A user unit on the laptop, which
+# holds the ssh keys, the router token and the ansible inventory; installed by
+# hand like laptop-vault-commit:
+#
+#   cp scripts/systemd/laptop-host-audit.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now laptop-host-audit.timer
+#
+# Read-only. The dated report lands in ~/.local/share/_r_/host-audit/, so two
+# weeks diff directly. Drift (medium or high) sends an ntfy message and exits
+# 1, which also leaves the unit failed in `systemctl --user --failed`.
+[Unit]
+Description=Weekly homelab audit against devices.md, the router and the playbooks
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# A full run takes about 1.5 min; ansible against a slow host and ntfy's own
+# three-minute retry both fit, a hung ssh does not run forever.
+TimeoutStartSec=1200
+WorkingDirectory=%h/Projects/_personal/homelab
+ExecStart=%h/.local/bin/uv run scripts/host_audit.py --notify

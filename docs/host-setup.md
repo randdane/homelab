@@ -689,3 +689,18 @@ uv run scripts/host_audit.py --no-playbooks  # seconds: hosts and router only
 The report is printed and saved to `${XDG_DATA_HOME:-~/.local/share}/_r_/host-audit/<date>.md`.
 It exits 1 when anything ranks medium or high. A host that is off is "not
 checked", unless `hosts.toml` marks it `always_on`, which ranks it high.
+
+**Weekly, unattended:** `scripts/systemd/laptop-host-audit.{service,timer}`, a
+user timer on the laptop (Sundays 14:00, `Persistent=true` so a week missed
+while asleep runs at the next login). Install instructions are in the unit's
+header. It runs with `--notify`: drift sends a high-priority ntfy message
+naming the worst five problems and the report's path, and leaves the unit
+failed in `systemctl --user --failed`. To see what changed between weeks:
+
+```bash
+cd ~/.local/share/_r_/host-audit && diff "$(ls | tail -2 | head -1)" "$(ls | tail -1)"
+```
+
+ntfy from the laptop goes over the tailnet: its `stacks/ntfy/.env` needs
+`NTFY_URL=http://homelab:2586`. The LAN address is closed to everything but
+Home Assistant by `101.fw`, and a LAN URL times out.

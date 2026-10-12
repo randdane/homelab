@@ -5,6 +5,7 @@
 
     uv run scripts/host_audit.py                 # full run, report to stdout and a file
     uv run scripts/host_audit.py --no-playbooks  # skip the slow ansible --check runs
+    uv run scripts/host_audit.py --notify        # also ntfy the phone when it finds drift
 
 Three questions, each answered by something that already knows the truth:
 
@@ -158,6 +159,15 @@ def render(findings, checked, date):
     return "\n".join(lines) + "\n"
 
 
+def alert_text(findings, report_path):
+    """The phone message: worst problems first, and where the full report is."""
+    real = sorted((f for f in findings if f[0] >= MEDIUM), key=lambda f: -f[0])
+    lines = [f"{LABEL[s]}: {w}: {what}" for s, w, what, _ in real[:5]]
+    if len(real) > 5:
+        lines.append(f"...and {len(real) - 5} more")
+    return "\n".join(lines + [f"Report: {report_path}"])
+
+
 # --- collection (I/O) -------------------------------------------------------
 
 def run_on(host, probes):
@@ -231,6 +241,8 @@ def unifi_clients(router):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-playbooks", action="store_true")
+    ap.add_argument("--notify", action="store_true",
+                    help="send an ntfy message when anything ranks medium or high")
     args = ap.parse_args()
 
     conf = tomllib.loads((SITE / "audit" / "hosts.toml").read_text())
@@ -267,9 +279,18 @@ def main():
     report = render(findings, checked, date)
     out = TOKENS / "host-audit"
     out.mkdir(parents=True, exist_ok=True)
-    (out / f"{date}.md").write_text(report)
+    path = out / f"{date}.md"
+    path.write_text(report)
     print(report)
-    return 1 if any(f[0] >= MEDIUM for f in findings) else 0
+    drift = any(f[0] >= MEDIUM for f in findings)
+    if drift and args.notify:
+        import notify  # beside this script
+        # notify.py defaults to the server's checkout; this runs on the laptop,
+        # whose copy of the ntfy stack's .env is in this repo (as vault-commit.sh).
+        os.environ.setdefault("HOMELAB_NOTIFY_ENV", str(ROOT / "stacks" / "ntfy" / ".env"))
+        if notify.deliver("host audit: drift found", alert_text(findings, path), notify.HIGH) != 0:
+            print("could not notify through ntfy", file=sys.stderr)
+    return 1 if drift else 0
 
 
 if __name__ == "__main__":

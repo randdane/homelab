@@ -40,7 +40,9 @@ docker exec ntfy ntfy token add hass      # -> HA's ntfy integration only
 docker exec ntfy ntfy token add phone     # -> ntfy app and Tasker only
 # Optional, one per extra machine that should alert: a labelled token for the
 # same write-only user, so it can be revoked alone. It goes in that machine's
-# own stacks/ntfy/.env, with NTFY_URL set to the server rather than 127.0.0.1.
+# own stacks/ntfy/.env, with NTFY_URL set to the server's TAILNET name
+# (http://<server>:2586), not its LAN address: the VM firewall admits 2586
+# on the LAN from Home Assistant only, so a LAN URL just times out.
 docker exec ntfy ntfy token add --label laptop homelab
 ```
 
