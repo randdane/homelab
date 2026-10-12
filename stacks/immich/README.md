@@ -91,8 +91,9 @@ Adding `/source-photos/` to the Duplicati job is a UI step, because the job
 lives in Duplicati's own database, not the repo (`stacks/duplicati/README.md`).
 Exclude `/source-photos/thumbs/` and `/source-photos/encoded-video/`, which
 Immich regenerates, so B2 holds originals, uploads and DB dumps. A restore
-then regenerates thumbnails and transcodes, and must keep the `.immich`
-marker files, which the backup includes.
+then regenerates thumbnails and transcodes. The `.immich` markers in
+`thumbs/` and `encoded-video/` go with those folders, so a restore must
+recreate them (below), or the server exits at start.
 
 **Pairing a database with its files.** A restore needs files at least as new
 as the database it restores, never older. Extra files are harmless; missing
@@ -108,6 +109,25 @@ emptied, Duplicati's `keep-time` decides how long a version with it
 survives: roughly 30 days in-app, then the keep-time window in B2. B2's
 Object Lock is a floor that stops early deletion, not extra retention
 (`stacks/duplicati/README.md`).
+
+### Restore drills, 2026-10-12: both pass
+
+| Drill | What | Result |
+|---|---|---|
+| 1 | Move one original aside on `pve`, restore it from B2 (`offsite-photos`), put it back | sha256 identical (`60eae13d…`); Immich reads it |
+| 2 | Delete `drill2.jpg` and empty the trash, then rebuild it in a throwaway Immich from B2 alone: the 02:00 DB dump plus its folder | the asset is back in the DB and its original opens; thumbnail missing, as expected |
+
+What a restore actually needs, learned the hard way:
+
+- **Restoring one file brings its whole folder.** Duplicati's tree picker restored all 80 files in the day folder.
+- **Restored files are read-only, and so are their folders**, owned by the container's user. Copy them out as root, then make them writable:
+  `docker exec -u 0 duplicati tar -C /tmp/<dir> -cf - . | tar -xf - -C data --no-same-owner --no-same-permissions --delay-directory-restore && chmod -R u+w data`
+- **Wait for Postgres to be healthy before loading the dump.** On first start it initialises, restarts, and a load piped in during that window fails quietly with an empty database.
+- **Loading the dump** (0 errors on v3.2.4):
+  `gunzip < data/backups/<dump>.sql.gz | sed "s/SELECT pg_catalog.set_config('search_path', '', false);/SELECT pg_catalog.set_config('search_path', 'public, pg_catalog', true);/g" | docker compose exec -T database psql -q -U immich -d immich`
+- **Recreate the folder markers** for anything not restored: `for d in thumbs upload backups library profile encoded-video; do mkdir -p data/$d; touch data/$d/.immich; done`. Then regenerate thumbnails (Administration → Jobs) on a real restore.
+- **Sign in with the local password.** OIDC is tied to the real hostname.
+- **Space:** the library is ~20 G without thumbnails and transcodes; check `df -h /` on `homelab` first.
 
 **Upgrade by hand, never unattended.** Immich runs schema migrations on
 startup and the release notes regularly carry breaking changes.
