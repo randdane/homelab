@@ -29,7 +29,9 @@ host-network container cannot resolve container names.
 static binary (checksum-verified against the release's
 `beszel_0.21.0_checksums.txt`) at `/usr/local/bin/beszel-agent`, secrets in
 root-only `/etc/homelab/beszel-agent.env`. It runs as a systemd
-`DynamicUser`, so it has no root and no disk access. SMART on `pve` stays with `smartd`.
+`DynamicUser`, so it has no root and no disk access. SMART on `pve` stays with `smartd`;
+`SMART_DEVICES=` (empty) in the env file turns the agent's SMART scan off,
+which otherwise logs `smartctl failed` per disk at every start.
 
 ## First deploy
 
