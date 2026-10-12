@@ -119,4 +119,4 @@ that per-IP lockout is counting the entire internet as one address.
 CT 102 is in vzdump (nightly to `tank-backups`, weekly to the backup server) and
 nothing sends it offsite. Accepted 2026-10-12: users come from LDAP and the
 library rescans from `/tank/media`, so a rebuild from scratch loses only
-watch history and per-user settings (`/var/lib/jellyfin`, ~4 MB).
+watch history and per-user settings (`/config` in the CT, ~107 MB; `/etc/jellyfin-homelab.env` points it there, not at the packaged `/var/lib/jellyfin`).

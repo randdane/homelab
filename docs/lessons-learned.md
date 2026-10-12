@@ -2029,3 +2029,19 @@ being broken: the DERP/STUN server sits on the same LAN as the nodes it
 measures, so `netcheck` on VM 101 reports its "public" address as
 the gateway's address — the router's hairpin SNAT — and every peer then tries to hole-punch
 to a private address.
+
+## 35. A laptop server can suspend itself even when logind says it won't
+
+A laptop running as a server dropped off the network an hour after it lost
+mains power. logind had `IdleAction=ignore`, which looked like the end of
+the story. It wasn't: GNOME's power plugin had
+`sleep-inactive-battery-type 'suspend'` at 3600 s, and it asks logind to
+suspend over D-Bus. `IdleAction` governs logind's own idle timer, not a
+suspend request from a session, so nothing refused it.
+
+Fix both layers: set the GNOME key to `'nothing'` and mask `sleep`,
+`suspend`, `hibernate` and `hybrid-sleep`. Masking alone is the one that
+cannot be undone by a desktop setting.
+
+The accidental power cycle was also a free test of the host's quiesce: after
+the cold boot no container started and no disabled service came back.
