@@ -15,103 +15,99 @@ unlisted `Host`, hence `DUPLICATI__WEBSERVICE_ALLOWED_HOSTNAMES`.
 
 ## Status
 
-Running on `homelab`, reading `~/.local/state/homelab/backups`.
+Running on `homelab`. Two jobs since 2026-10-12, each in its own B2 bucket
+with its own application key and passphrase:
 
-**Its own schedule is disabled.** The `homelab-backup` systemd timer runs the
-local archive and then triggers this job, in that order, via
-`scripts/run_backups.sh`. Two independent schedules an hour apart only worked
-while nothing ever caught up after a boot; see that script's header.
+| Job (ID) | Sources | Bucket | `keep-time` |
+|---|---|---|---|
+| `offsite-data` (5) | `/source/`, `/source-state/` (minus `backups/`) | `homelab-data-<suffix>/duplicati` | `10D` |
+| `offsite-photos` (6) | `/source-photos/` (minus `thumbs/`, `encoded-video/`) | `homelab-photos-<suffix>/duplicati` | `90D` |
 
-Job: **homelab-offsite** -> `b2://homelab-offsite-<suffix>/homelab`. The bucket
-is private and the application key is scoped to it.
+Both: AES, zip level 1, 50 MB dblocks, **auto-compact on**.
 
-### Object Lock, and what it forces
+**Their own schedules are disabled.** The `homelab-backup` systemd timer runs
+the local archive and then triggers every job in `DUPLICATI_JOBS` (in `.env`),
+in that order, via `scripts/run_backups.sh`. It attempts every job even if one
+fails, and the run fails if any did. Two independent schedules an hour apart
+only worked while nothing ever caught up after a boot; see that script's
+header.
 
-The bucket has **governance retention**, so an uploaded object cannot be
-deleted before its retention expires — not by this host's key, not by anything
-that compromises it. That is the point: without it, the credentials able to
-destroy the only offsite copy sit on the machine being protected.
+**Why two buckets.** A leaked key or a wrong setting reaches one data set,
+and each bucket's size and restore test read on their own. The photos keep
+90 days because a mass delete in Immich can go unnoticed for weeks and photos
+rarely change, so long history costs little; the archives change every night
+and anything older than a few days is stale.
 
-**The bucket default was lowered from 14 days to 7 on 2026-09-23.** That
-changes what *new* uploads carry. It does **not** touch objects already
-uploaded: B2 stamps retention at upload time, so every object written before
-that date keeps its 14-day lock until it expires. The last of them clears
-around **2026-10-07**, and until then the 14-day figure is still the binding
-constraint.
+The single job `homelab-offsite` (ID 1, bucket `homelab-offsite-<suffix>`)
+it replaced filled the 10 GB free tier: it was fed gzipped archives, which
+defeat dedup, compaction was off because of the lock, and the photos were
+then added to it. It failed every night from 2026-10-09 (`storage_cap_exceeded`
+on the last). It is kept, unscheduled, until the new jobs have been through a
+full retention cycle (Vikunja #67).
 
-Two Duplicati settings exist solely to avoid fighting that lock:
+### Object Lock
 
-| Setting | Value | Why |
-|---|---|---|
-| `keep-time` | `16D` | Must exceed the lock, or deletes hit locked objects and every run errors. 16D clears the legacy 14-day stamps with margin. Drop to `10D` once they have expired — not before. |
-| `--no-auto-compact` | `True` | Compaction deletes and rewrites remote volumes whenever wasted space crosses a threshold, including files uploaded yesterday. Under the lock those deletes are refused. |
+Both buckets: **governance, 7 days**. The Duplicati keys hold only
+`listBuckets listFiles readFiles writeFiles deleteFiles` — **no
+`bypassGovernance`**, so a stolen key cannot erase the last week. Tested
+2026-10-12: a fresh upload refused deletion, with and without
+`bypassGovernance: true` in the request.
 
-**`keep-time` was `30D` until 2026-09-23.** It was cut to `16D` to drop the
-pre-cutover history, which the owner did not want offsite. Measured on the run
-that followed: `Success`, **0 errors, 0 warnings**, 15 filesets deleted,
-35 versions → 21, oldest now 2026-09-08. No delete was refused, which is the
-evidence that 16D clears the legacy locks.
+Three traps found setting this up:
 
-**It freed no space, and that is expected.** `TargetFilesSize` was 6.653 GiB
-before and after; only the `.dlist` files went (354 remote files → 345). The
-data volumes behind a deleted version stay until compaction runs, and
-compaction is off. Retention controls how many versions exist; it does not
-reclaim bytes. Space relief needs compaction, not yet done.
+- **The web UI's "Read and Write" key includes `bypassGovernance`.** Create
+  the keys over the API (`b2_create_key` with an explicit capability list;
+  on API v3 it takes `bucketId`, singular) and read the capabilities back.
+- **`isFileLockEnabled: true` is not a lock.** A new bucket reported it with
+  `defaultRetention.mode: null`, so uploads would have carried no retention
+  at all. Set the default retention, and check an object, not the bucket.
+- **Duplicati's destination test fails under the lock.** It uploads
+  `duplicati-access-privileges-test.tmp` and then cannot delete it:
+  `401 access_denied`. Expected; the file is harmless and ages out.
 
-**Why not `keep-versions`, which is what "keep 3 backups" sounds like.**
-Object Lock sets a floor under retention: three daily versions is three days,
-far inside the lock window, so every run would error trying to prune. The same
-reasoning retired `--retention-policy` below. Three restore points belong in
-the *local* rotation (`BACKUP_RETENTION_DAYS`), which no lock governs; the
-offsite floor is lock + margin, currently 10 days.
+**Open question: does compaction work under the lock?** Retention and
+compaction delete remote volumes; any younger than 7 days are refused. The
+first real test is after day 10 of the data job. If deletes there are fatal,
+the choice is between a longer `keep-time` and dropping the lock — do not
+switch compaction off again; that is how the old bucket filled.
 
-`--retention-policy` was removed. It coexisted with `keep-time` and took
-precedence, pruning daily versions after a week — inside the lock window.
-Note that the UI *cannot* remove it: it renders `retention-policy` as the
-"Backup retention" dropdown, so the value can be replaced but never deleted,
-and it stays invisible in the advanced-options list. It came out over the API.
+Lifecycle: "keep only the last version" (`daysFromHidingToDeleting: 1`).
+`daysFromUploadingToHiding` must stay null — it hides *current* files.
 
-The B2 lifecycle rule is `daysFromHidingToDeleting: 30`,
-`daysFromUploadingToHiding: null`. The second field must stay null — it hides
-*current* files, which would start hiding live backup data.
+**Why not `keep-versions`.** The lock sets a floor under retention: three
+daily versions is three days, inside the lock window, so every prune would
+hit locked objects. The same reasoning retired `--retention-policy`, which
+the UI renders as the "Backup retention" dropdown and therefore cannot
+remove; it came out over the API.
 
-**`isFileLockEnabled: true` is not enough.** A bucket can report file lock
-enabled while `defaultRetention.mode` is `null`, in which case nothing is
-actually locked and uploads carry no retention at all. That was true here for
-several hours. Verify at the object level, not the bucket level:
-
-```
-b2 file info "b2://homelab-offsite-<suffix>/<some object>"   # fileRetention.mode
-```
-
-Editing this job over the API is safe: a PUT preserves the passphrase rather
-than storing the `***************` mask it returns on read. That was proved
-with a throwaway job, not assumed — the mask is a fixed 15 characters
-regardless of the real length, so it cannot be checked by inspection.
+**Creating a job needs its passphrase.** `POST /api/v1/backups` without one
+answers `400 Missing passphrase`, and the UI's import form failed validation
+without saying where. The jobs were created by a script on `homelab` that
+read the export file and prompted for the passphrase with `getpass`, so the
+passphrase never touched a file. Editing a job over the API is safe: a PUT
+preserves the passphrase rather than storing the mask it returns on read.
 
 Job definitions live in the `config` volume, not in this repo, and that
 volume is in the local nightly archive — so the offsite copy contains the
 configuration needed to rebuild the offsite backup, one generation behind.
 What it does NOT contain is `SETTINGS_ENCRYPTION_KEY` or the restore
-passphrase. Those are the two things that must live somewhere else.
+passphrases. Those must live somewhere else.
 
-### Verified end to end, 2026-08-21
+### Verified end to end, 2026-10-12
 
-Not "the job ran green" — the whole chain, from B2 back to usable data:
+First runs: data 1.21 GB in ~30 s, photos 20.6 GB (11,373 files) in 8.5 min,
+0 errors, 0 warnings. Then the disaster path — `duplicati-cli restore
+--no-local-db` inside the container as `abc`, every block from B2:
 
-- Upload: 3 objects, 9.14 MB, all `.aes`.
-- Restore from B2 with `--no-local-db` (i.e. the disaster path, where the
-  local block database is gone too): `Restored 1 (9.132 MiB) files`.
-- The restored archive is **byte-identical** to the original:
-  `sha256 63f04519...ef47a` on both sides.
-- Extracted it and checked what came out, rather than trusting the tarball:
-  headscale `ok nodes=2`, vikunja `ok tasks=10`, n8n `ok workflows=1`,
-  jellyfin `ok users=1`, and both headscale private keys present.
-- Restoring with a deliberately wrong passphrase recovers **0 files** — so
-  the data really is encrypted with the passphrase, not merely stored behind
-  an account login.
+| Job | Restored | Check |
+|---|---|---|
+| data | newest archive, 421 MiB | sha256 matches the source; `tar -tzf` lists 13,514 entries |
+| photos | newest Immich DB dump + 5 random originals | all 6 sha256 match |
+| data, wrong passphrase | 0 files | decrypt refused |
 
-Re-run that last set after any change to the destination or the key.
+Re-run after any change to a destination, key or passphrase. Two ways this
+test lied before it passed — a `\$` left in the passphrase, and a root run
+that broke the web login — are in `docs/recovery.md` §2.
 
 ## Notes
 

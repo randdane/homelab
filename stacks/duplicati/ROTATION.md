@@ -11,6 +11,14 @@ Rotating every secret used by the Duplicati offsite backup on `homelab`: the
 settings encryption key, the Backblaze B2 application key, and the restore
 passphrase.
 
+> [!WARNING]
+> **Written for the single job `homelab-offsite` (ID 1) and its one bucket.**
+> Since 2026-10-12 there are two jobs, `offsite-data` (5) and `offsite-photos`
+> (6), each with its own bucket, key and passphrase, and the lock is 7 days
+> (see `README.md`). Run the per-job steps once per job; job IDs live in
+> `DUPLICATI_JOBS` in `.env`. Create keys over the API, not the web UI, whose
+> "Read and Write" keys include `bypassGovernance`.
+
 > [!IMPORTANT]
 > **Object Lock landed after this runbook was written (2026-08-23).** The
 > bucket now has governance retention of 14 days, which changes the passphrase

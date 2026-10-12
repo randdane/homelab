@@ -38,9 +38,9 @@ somewhere you cannot reach after a disk failure — that is the whole point:
 
 | Secret | Lives in | Needed for |
 |---|---|---|
-| **B2 bucket and path** | Duplicati's `TargetURL`, in `Duplicati-server.sqlite` | naming the bucket at all |
-| B2 application key ID + secret | same `TargetURL` | reaching the bucket |
-| Duplicati restore **passphrase** | Duplicati settings, same DB — masked in API *responses*, but readable back off a running server (see [Reading the passphrase back](#reading-the-passphrase-back-off-a-running-server)) | decrypting the archives |
+| **B2 bucket and path**, one per job | Duplicati's `TargetURL`, in `Duplicati-server.sqlite` | naming the bucket at all |
+| B2 application key ID + secret, one per bucket | same `TargetURL` | reaching the bucket |
+| Duplicati restore **passphrase**, one per job | Duplicati settings, same DB — masked in API *responses*, but readable back off a running server (see [Reading the passphrase back](#reading-the-passphrase-back-off-a-running-server)) | decrypting the archives |
 | `SETTINGS_ENCRYPTION_KEY` | `stacks/duplicati/.env` | reading Duplicati's own config DB |
 | `WEBSERVICE_PASSWORD` | `stacks/duplicati/.env` | the API, and `run_backups.sh` |
 | `AUTHENTIK_SECRET_KEY` | `stacks/authentik/.env` | keeping sessions/tokens valid after restore |
@@ -48,7 +48,7 @@ somewhere you cannot reach after a disk failure — that is the whole point:
 Without the first three, the backups are unreadable and nothing below works.
 
 **The bucket name is a secret in the sense that matters: you cannot guess it.**
-It carries a random suffix (`homelab-offsite-<random>`), it is not in any
+Each carries a random suffix (`homelab-data-<random>`, `homelab-photos-<random>`), neither is in any
 `.env`, and it lives only inside the Duplicati database that is itself in the
 bucket. An earlier version of this table said the B2 credentials lived in
 `stacks/duplicati/.env` — they do not; that file holds only `PGID`, `PORT`,
@@ -145,10 +145,11 @@ written 9.13 MiB. A drill that has never run is not a drill; it is a script
 that has never been wrong out loud.
 
 > [!IMPORTANT]
-> The bucket has **Object Lock with 14-day governance retention**. Backups
-> cannot be deleted or encrypted in place inside that window, including by you
-> or by ransomware. It also means a rotated passphrase leaves two chains
-> coexisting for up to two weeks — see `stacks/duplicati/ROTATION.md`.
+> Both buckets have **Object Lock with 7-day governance retention**, and
+> Duplicati's keys cannot bypass it. Backups cannot be deleted or encrypted in
+> place inside that window, by ransomware holding a key or by you. It also
+> means a rotated passphrase leaves two chains coexisting for up to a week —
+> see `stacks/duplicati/ROTATION.md`.
 
 ---
 
@@ -162,10 +163,11 @@ that has never been wrong out loud.
 
 Local archives live at
 `~/.local/state/homelab/backups/homelab-<timestamp>.tar.gz` — retention is 14
-days (`BACKUP_RETENTION_DAYS`). B2 holds 30 days (`keep-time=30D`).
+days (`BACKUP_RETENTION_DAYS`). In B2, job `offsite-data` keeps 10 days and
+`offsite-photos` keeps 90 (`keep-time`).
 
-Note the two are **different retention windows**. Anything older than 14 days
-exists only in B2.
+Note these are **different retention windows**. Anything older than the local
+window exists only in B2.
 
 ### What you do not get back: `/srv/media`
 
@@ -208,10 +210,11 @@ TOK=$(curl -s -X POST http://127.0.0.1:8200/api/v1/auth/login \
       | python3 -c 'import json,sys;print(json.load(sys.stdin)["AccessToken"])')
 
 # what versions exist in the bucket
-curl -s http://127.0.0.1:8200/api/v1/backup/1/filesets -H "Authorization: Bearer $TOK"
+# job IDs: DUPLICATI_JOBS in .env (5 = offsite-data, 6 = offsite-photos)
+curl -s http://127.0.0.1:8200/api/v1/backup/5/filesets -H "Authorization: Bearer $TOK"
 
 # verify: downloads + decrypts + hashes. Poll /api/v1/task/<ID> until Completed.
-curl -s -X POST http://127.0.0.1:8200/api/v1/backup/1/verify -H "Authorization: Bearer $TOK"
+curl -s -X POST http://127.0.0.1:8200/api/v1/backup/5/verify -H "Authorization: Bearer $TOK"
 ```
 
 `Status: Completed` with `ErrorMessage: null` means the offsite copy is good.
@@ -263,7 +266,7 @@ TOK=$(curl -s -X POST http://127.0.0.1:8200/api/v1/auth/login \
       -d "{\"Password\":\"$PW\",\"RememberMe\":false}" \
       | python3 -c 'import json,sys;print(json.load(sys.stdin)["AccessToken"])')
 
-curl -s "http://127.0.0.1:8200/api/v1/backup/1/export-cmdline?export-passwords=true" \
+curl -s "http://127.0.0.1:8200/api/v1/backup/5/export-cmdline?export-passwords=true" \
   -H "Authorization: Bearer $TOK"
 ```
 
@@ -275,6 +278,13 @@ the container rather than guessing.
 
 Redirect it to a `chmod 600` file rather than the terminal, and delete that
 file once the value is in the password manager.
+
+**The output is shell-quoted, so unquote it the way a shell would.** A `$` in
+the passphrase comes out as `\$` inside double quotes. Python's `shlex.split`
+keeps that backslash, the passphrase gains a character, and the restore fails
+with `Failed to decrypt data (invalid passphrase?)` — over a backup that is
+fine. Measured 2026-10-12: 33 characters extracted for a 32-character
+passphrase.
 
 > [!CAUTION]
 > This works **only while the server runs and its settings DB is intact.** The
@@ -296,8 +306,12 @@ stored credentials, so nothing needs extracting.
 > 5 s through the API, with a hash identical to the local file.
 >
 > To **test** the offsite copy, force every block to come from the bucket.
-> Run `duplicati-cli` inside the container with `--no-local-blocks=true` and a
-> fresh `--dbpath`. Take the target URL and passphrase from `export-cmdline`
+> Run `duplicati-cli` inside the container with `--no-local-db=true` (2.3
+> already restores without local blocks by default; `--no-local-blocks` is
+> deprecated). **Run it as `-u abc`, never as root**: on 2026-10-12 a root run
+> re-owned `/config` to `root:root 700`, the web server could no longer write
+> there, and every login — including `run_backups.sh`'s — answered 401 until
+> `chown abc:abc /config`. Take the target URL and passphrase from `export-cmdline`
 > (see above), and put the passphrase in a `--parameters-file`. That took 49 s
 > for 76.5 MiB and logged each `dblock` download. Exit code 2 means warnings,
 > not failure; under `set -e` it still stops the script, so do cleanup in a
@@ -309,9 +323,13 @@ with credentials from your password manager:
 ```bash
 docker run --rm -v /tmp/restore:/out duplicati/duplicati:latest \
   duplicati-cli restore \
-  "b2://homelab-offsite-<suffix>/homelab?auth-username=<KEY_ID>&auth-password=<APP_KEY>" \
+  "b2://homelab-data-<suffix>/duplicati?auth-username=<KEY_ID>&auth-password=<APP_KEY>" \
   "*" --restore-path=/out --passphrase="<PASSPHRASE>"
 ```
+
+For the photos, use `homelab-photos-<suffix>` with its own key and passphrase.
+The newest Immich database dump is inside it, under `backups/`, so one restore
+brings back the originals and a matching database.
 
 Duplicati rebuilds its index from the remote first, so this is slower than a
 local extract. Add `--version=N` to pick an older snapshot (`0` is newest).
