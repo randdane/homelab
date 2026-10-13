@@ -10,19 +10,21 @@ the ports on the laptop — see below)
 
 ## Notes
 
-**It answers to eight names, and only three of them are public.** The
-Caddyfile is not a list of public sites; it is a list of names this host
-answers to, some gated by source address rather than by exposure:
+**Only the first three names below are public; everything else is gated.**
+The Caddyfile is not a list of public sites; it is a list of names this host
+answers to, most of them gated by source address rather than by exposure:
 
 | Name | Reachable from | Gate |
 |---|---|---|
 | `myhome.duckdns.org` | the internet | none — headscale control plane and DERP, deliberately not bounced |
 | `jellyfin.myhome.duckdns.org` | the internet | CrowdSec |
 | `jellyfin.example.com` | the internet | CrowdSec |
-| `authentik.example.com` | tailnet + LAN | `remote_ip` allowlist, ANDed with the host match |
-| `homepage.example.com` | tailnet + LAN | `remote_ip` allowlist, ANDed with the host match |
-| `kuma.example.com` | tailnet + LAN | `remote_ip` allowlist, ANDed with the host match |
-| `vikunja.example.com` | tailnet + LAN | `remote_ip` allowlist, ANDed with the host match |
+| every other `*.example.com` | tailnet + LAN | `remote_ip` allowlist, ANDed with the host match |
+
+The gated names are the `@<name>` matchers in `config/Caddyfile`'s wildcard
+block; that file is the list, so it is not repeated here. Anything served
+there without the allowlist fails `scripts/check_vhosts.py` unless it is
+declared in its `PUBLIC_HOSTS`.
 
 **`tasks.<base_domain>` is gone, as of 2026-09-09.** `vikunja.example.com`
 replaced it and is the name actually used: it resolves whether or not

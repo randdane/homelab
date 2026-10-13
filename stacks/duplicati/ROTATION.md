@@ -11,17 +11,26 @@ Rotating every secret used by the Duplicati offsite backup on `homelab`: the
 settings encryption key, the Backblaze B2 application key, and the restore
 passphrase.
 
-> [!WARNING]
-> **Written for the single job `homelab-offsite` (ID 1) and its one bucket.**
-> Since 2026-10-12 there are two jobs, `offsite-data` (5) and `offsite-photos`
-> (6), each with its own bucket, key and passphrase, and the lock is 7 days
-> (see `README.md`). Run the per-job steps once per job; job IDs live in
-> `DUPLICATI_JOBS` in `.env`. Create keys over the API, not the web UI, whose
+> [!CAUTION]
+> **Out of date: do not run the steps below as written.** They were written for
+> the single job `homelab-offsite` (ID 1) and its one bucket. That job was
+> deleted 2026-10-13; the jobs now are `offsite-data` (5) and `offsite-photos`
+> (6), each with its own bucket, key and passphrase (`README.md`). Three steps
+> would do damage or fail:
+>
+> - **Step 4** deletes every job's settings and local database, not one.
+> - **Step 5** cannot purge a bucket under Object Lock (governance, 7 days):
+>   the Duplicati keys have no `bypassGovernance`, by design.
+> - **Step 6** recreates a job whose sources and settings match neither
+>   current job.
+>
+> A per-job rewrite is tracked in Vikunja. Until then, rotate by hand from
+> the live job config. Create keys over the API, not the web UI, whose
 > "Read and Write" keys include `bypassGovernance`.
 
 > [!IMPORTANT]
 > **Object Lock landed after this runbook was written (2026-08-23).** The
-> bucket now has governance retention of 14 days, which changes the passphrase
+> buckets now have governance retention (7 days today; 14 when this was written), which changes the passphrase
 > rotation specifically: a new passphrase starts a new backup chain, and the
 > objects encrypted under the old one cannot be deleted until their retention
 > expires — not without a key holding `bypassGovernance`. Expect both chains to
