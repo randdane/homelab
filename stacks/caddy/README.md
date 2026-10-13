@@ -117,17 +117,13 @@ Added 2026-10-13 so the companion app connects over HTTPS. HA runs on its own
 box at `{$HASS_HOST}` (repo-wide `.env`); Caddy proxies to `:8123`, behind the
 usual `remote_ip` gate and HA's own login. Websockets need no extra config.
 
-HA rejects proxied requests (400) until its `configuration.yaml` trusts this
-host:
+HA rejects proxied requests (400) until it trusts this host. Since HA 2026.x
+that lives in the UI, not `configuration.yaml` (a YAML `http:` block is
+ignored once migrated, and stops loading in 2027.2): Settings → System →
+Network → Reverse proxy → turn on Trust X-Forwarded-For, and add this host's
+LAN address as a `/32` under Trusted proxies.
 
-```yaml
-http:
-  use_x_forwarded_for: true
-  trusted_proxies:
-    - <this host's LAN address>
-```
-
-Then set the app's URL, and Settings → System → Network → Home Assistant URL,
+Then set the app's URL, and the Home Assistant URL → Internet on the same page,
 to `https://hass.example.com`. The name needs a public A record and a Pi-hole
 Local DNS Record, both pointing at this host, like every gated vhost.
 
