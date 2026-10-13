@@ -786,6 +786,7 @@ def test_problems_for_collects_stack_and_host_failures(monkeypatch):
     # See the note in test_problems_for_is_empty_when_nothing_is_failing.
     monkeypatch.setattr(status, "userland_proxy_problem", lambda: None)
     monkeypatch.setattr(status, "docker_proxy_running_problem", lambda: None)
+    monkeypatch.setattr(status, "caddy_source_problem", lambda: None)
     monkeypatch.setattr(status, "env_permission_problem", lambda: None)
     row = ROW._replace(name="headscale", lifecycle="production", status="down")
     problems = status.problems_for([row], _state_with("headscale"))
@@ -804,6 +805,7 @@ def test_problems_for_is_empty_when_nothing_is_failing(monkeypatch):
     # whose daemon.json has no userland-proxy key.
     monkeypatch.setattr(status, "userland_proxy_problem", lambda: None)
     monkeypatch.setattr(status, "docker_proxy_running_problem", lambda: None)
+    monkeypatch.setattr(status, "caddy_source_problem", lambda: None)
     monkeypatch.setattr(status, "env_permission_problem", lambda: None)
     row = ROW._replace(name="headscale", lifecycle="production", status="up")
     assert status.problems_for([row], _state_with("headscale")) == []
@@ -946,6 +948,7 @@ def test_problems_for_watches_the_recorded_archive_directory(monkeypatch):
     # whose daemon.json has no userland-proxy key.
     monkeypatch.setattr(status, "userland_proxy_problem", lambda: None)
     monkeypatch.setattr(status, "docker_proxy_running_problem", lambda: None)
+    monkeypatch.setattr(status, "caddy_source_problem", lambda: None)
     monkeypatch.setattr(status, "env_permission_problem", lambda: None)
     seen = []
     monkeypatch.setattr(status, "disk_problem", lambda paths: seen.extend(paths))
@@ -970,6 +973,7 @@ def test_problems_for_survives_a_state_file_with_no_archive_dir(monkeypatch):
     # whose daemon.json has no userland-proxy key.
     monkeypatch.setattr(status, "userland_proxy_problem", lambda: None)
     monkeypatch.setattr(status, "docker_proxy_running_problem", lambda: None)
+    monkeypatch.setattr(status, "caddy_source_problem", lambda: None)
     monkeypatch.setattr(status, "env_permission_problem", lambda: None)
     seen = []
     monkeypatch.setattr(status, "disk_problem", lambda paths: seen.extend(paths))
@@ -1394,3 +1398,16 @@ def test_netalertx_stale_import_is_a_problem():
 def test_netalertx_unreadable_is_a_problem():
     """Running here but unanswerable: a crashed container must not read as fine."""
     assert status.netalertx_stale_problem(None) is not None
+
+
+def test_rewritten_requests_finds_only_the_gateway():
+    gw = "192.0.2.1"
+    lines = [
+        '{"msg":"handled request","request":{"remote_ip":"198.51.100.5","host":"hass.example.com"},"status":200}',
+        '{"msg":"handled request","request":{"remote_ip":"192.0.2.1","host":"vikunja.example.com"},"status":0}',
+        '{"msg":"handled request","request":{"remote_ip":"192.0.2.12","host":"authentik.example.com"},"status":200}',
+        'not json',
+        '{"level":"info","msg":"no request here"}',
+    ]
+    assert status.rewritten_requests(lines, gw) == ["vikunja.example.com"]
+    assert status.rewritten_requests(lines[:1], gw) == []

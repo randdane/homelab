@@ -640,6 +640,65 @@ def docker_proxy_running_problem(timeout=15):
             f"now says; it needs `systemctl restart docker`.")
 
 
+# One status.py interval plus slack, so every request is seen by one run.
+CADDY_LOG_WINDOW = "65m"
+
+
+def rewritten_requests(lines, gateway):
+    """Hosts of Caddy access-log entries whose client is the bridge gateway."""
+    hosts = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        request = entry.get("request") if isinstance(entry, dict) else None
+        if isinstance(request, dict) and request.get("remote_ip") == gateway:
+            hosts.append(request.get("host", "?"))
+    return hosts
+
+
+def caddy_source_problem(timeout=30):
+    """Whether Caddy logged a request whose client address was rewritten.
+
+    The SYMPTOM check (HL-63). userland_proxy_problem, docker_proxy_running_problem
+    and the tailnet-source timer each test one known CAUSE; this catches the
+    class. Anything that rewrites the source between client and Caddy lands as
+    the `edge` gateway, which no real client ever is -- 0 such entries in the
+    7 days to 2026-10-13, while a self-request from the host shows up as
+    `remote_ip <gateway>`, status 0. Rejected requests are logged, so the
+    outage is visible here even though every gated vhost refuses it.
+
+    Limit: it reads logs on the host it protects, and is silent when nobody
+    made a request in the window -- which is safe, not green-by-accident,
+    since a rewritten request is what it looks for.
+    """
+    try:
+        net = subprocess.run(
+            ["docker", "network", "inspect", "edge", "-f",
+             "{{(index .IPAM.Config 0).Gateway}}"],
+            capture_output=True, text=True, timeout=timeout)
+        if net.returncode != 0 or not net.stdout.strip():
+            return f"cannot read the edge network gateway -- client source addresses were NOT checked: {net.stderr.strip() or 'empty answer'}"
+        logs = subprocess.run(["docker", "logs", "--since", CADDY_LOG_WINDOW, "caddy"],
+                              capture_output=True, text=True, timeout=timeout)
+    except (subprocess.SubprocessError, OSError) as exc:
+        return f"cannot read Caddy's access log -- client source addresses were NOT checked: {exc}"
+    if logs.returncode != 0:
+        return f"cannot read Caddy's access log -- client source addresses were NOT checked: {logs.stderr.strip()[-200:]}"
+
+    gateway = net.stdout.strip()
+    # Caddy writes its log to stderr; docker logs replays it there.
+    hosts = rewritten_requests((logs.stdout + logs.stderr).splitlines(), gateway)
+    if not hosts:
+        return None
+    return (f"Caddy logged {len(hosts)} request(s) in the last {CADDY_LOG_WINDOW} "
+            f"from {gateway}, the edge bridge gateway (e.g. {hosts[0]}) -- "
+            f"something is rewriting client source addresses, so every "
+            f"remote_ip-gated vhost refuses those clients. Check the nat "
+            f"POSTROUTING order and userland-proxy first ($SITE_DIR/docs/devices.md).")
+
+
 def daemon_problem():
     """Whether dockerd itself is unreachable, or None if it answers.
 
@@ -1052,6 +1111,7 @@ def problems_for(rows, state):
         for problem in (daemon_problem(), shutdown_timeout_problem(),
                         userland_proxy_problem(),
                         docker_proxy_running_problem(),
+                        caddy_source_problem(),
                         disk_problem(watched)):
             if problem:
                 problems.append(problem)
