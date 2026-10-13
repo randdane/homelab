@@ -105,7 +105,7 @@ PW="$(grep -E '^WEBSERVICE_PASSWORD=' "$DUPLICATI_ENV" | cut -d= -f2-)"
 # Which Duplicati job IDs to run, space-separated. Site data, so it lives in
 # the .env beside the password; IDs change whenever a job is recreated.
 JOBS="$(grep -E '^DUPLICATI_JOBS=' "$DUPLICATI_ENV" | cut -d= -f2- | tr -d '"' || true)"
-JOBS="${JOBS:-1}"
+[ -n "$JOBS" ] || fail "DUPLICATI_JOBS is empty in $DUPLICATI_ENV"
 
 # Duplicati carries docker-volume-backup.stop-during-backup=true, so the
 # archive step above just stopped and restarted it. Its web service needs a

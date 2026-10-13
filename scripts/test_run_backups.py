@@ -22,11 +22,11 @@ esac
 """
 
 
-def run(tmp_path, run_body, task_body):
+def run(tmp_path, run_body, task_body, jobs="DUPLICATI_JOBS=1\n"):
     repo = tmp_path / "repo"
     (repo / "scripts").mkdir(parents=True)
     (repo / "stacks/duplicati").mkdir(parents=True)
-    (repo / "stacks/duplicati/.env").write_text("WEBSERVICE_PASSWORD=x\n")
+    (repo / "stacks/duplicati/.env").write_text("WEBSERVICE_PASSWORD=x\n" + jobs)
     shutil.copy(SCRIPT, repo / "scripts/run_backups.sh")
     bindir = tmp_path / "bin"
     bindir.mkdir()
@@ -66,3 +66,12 @@ def test_run_request_failing_is_a_failure(tmp_path):
     r = run(tmp_path, "", '{"Status":"Completed"}')
     assert r.returncode == 1
     assert "could not start the offsite job" in r.stderr
+
+
+def test_missing_jobs_refuses_to_run(tmp_path):
+    # No silent default: job IDs change when a job is recreated, and a stale
+    # one is exactly what this would fall back to.
+    r = run(tmp_path, '{"ID":5}', '{"Status":"Completed"}', jobs="")
+    assert r.returncode == 1
+    assert "DUPLICATI_JOBS is empty" in r.stderr
+    assert "triggering" not in r.stderr
