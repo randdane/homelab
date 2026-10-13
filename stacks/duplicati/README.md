@@ -183,14 +183,15 @@ to nearly nothing; losing it there would put every previous tarball inside the
 next one.
 
 **Rotating any of these secrets:** follow `ROTATION.md` in this directory.
-Duplicati has no in-place rotation for the settings key, so it means wiping
-the settings database and recreating the job — worth doing from a written
+A job's key and passphrase are rotated by editing that job, and a new
+passphrase writes a new chain under a new prefix; the settings key is
+rotated by two restarts, not by wiping the store. Worth doing from a written
 procedure rather than improvising, because the old credential must not be
 destroyed until the new one has passed a restore test.
 
 **`SETTINGS_ENCRYPTION_KEY` protects the credentials for every destination**,
 and 2.1+ refuses to start without it. Store it somewhere that is *not* only
-this machine — Vaultwarden, or on paper. Losing it means reconfiguring every
+this machine — your external password manager, not Vaultwarden (a password manager inside the lab cannot help you rebuild it). Losing it means reconfiguring every
 backup job by hand.
 
 **The restore passphrase matters more than any of this.** Duplicati encrypts
