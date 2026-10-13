@@ -42,8 +42,8 @@ The single job `homelab-offsite` (ID 1, bucket `homelab-offsite-<suffix>`)
 it replaced filled the 10 GB free tier: it was fed gzipped archives, which
 defeat dedup, compaction was off because of the lock, and the photos were
 then added to it. It failed every night from 2026-10-09 (`storage_cap_exceeded`
-on the last). It is kept, unscheduled, until the new jobs have been through a
-full retention cycle (Vikunja #67).
+on the last). Its bucket was emptied and the job deleted 2026-10-13, after
+the new jobs' first clean nightly run.
 
 ### Object Lock
 
