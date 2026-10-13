@@ -111,6 +111,26 @@ file needs the same explicit `!` entry.
 Caddyfile is the failure that actually happens here, and it is invisible to a
 request against a site that is still serving the old config.
 
+## Home Assistant: `hass.example.com`
+
+Added 2026-10-13 so the companion app connects over HTTPS. HA runs on its own
+box at `{$HASS_HOST}` (repo-wide `.env`); Caddy proxies to `:8123`, behind the
+usual `remote_ip` gate and HA's own login. Websockets need no extra config.
+
+HA rejects proxied requests (400) until its `configuration.yaml` trusts this
+host:
+
+```yaml
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - <this host's LAN address>
+```
+
+Then set the app's URL, and Settings → System → Network → Home Assistant URL,
+to `https://hass.example.com`. The name needs a public A record and a Pi-hole
+Local DNS Record, both pointing at this host, like every gated vhost.
+
 ## TLS: one wildcard, issued over DNS-01
 
 `*.example.com` is issued through the Porkbun DNS provider, and the

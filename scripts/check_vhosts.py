@@ -194,6 +194,9 @@ def wildcard_fallback_problem(text):
 # Listing a host here is a decision that nobody gets told when it breaks from
 # off-LAN -- so it needs a reason, the same way PUBLIC_HOSTS does.
 NOT_PHONE_PROBED = {
+    "hass.{$PUBLIC_DOMAIN}":
+        "the Home Assistant app on the phone shows its own connection "
+        "state, which is a better probe than a Tasker request",
     "cup.{$PUBLIC_DOMAIN}":
         "admin UI, not used from the phone; check_updates.py reads Cup "
         "directly on homelab and fails loudly if it is gone",
