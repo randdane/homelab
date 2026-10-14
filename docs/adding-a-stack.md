@@ -124,11 +124,17 @@ exact command or click-path there and waits for them.
       probe block (Var Clear, HTTP Request, If, Var Append `%failed`, End If)
       per new host after the last one, pushes it as a new file, and you import it
       (Tasks tab, long-press → Import Task, replace) and run it once.
-      **Verify from the run log, not the push**: count the `HTTP Request`
-      actions in the latest run in `/sdcard/Tasker/log/runlog.txt`; it should
-      be one per `PHONE_PROBES` entry plus two (guard and push). On
-      2026-09-29 that count showed karakeep had been in `PHONE_PROBES` for
-      eleven days without ever being probed
+      **Verify from Caddy's log, not the push**: after the run, each
+      `PHONE_PROBES` host should show one request from the phone's tailnet
+      address (`<PHONE_TS_IP>`, the phone's row in `$SITE_DIR/docs/devices.md`). On 2026-09-29 the run-log form of this check showed karakeep had been in
+      `PHONE_PROBES` for eleven days without ever being probed:
+      ```bash
+      ssh homelab 'docker logs --since 15m caddy 2>&1 | grep -o "\"remote_ip\":\"<PHONE_TS_IP>\",[^}]*\"host\":\"[a-z-]*\.[^\"]*\"" | grep -o "host\":\"[^\"]*" | sort | uniq -c'
+      ```
+      A missing host can mean the probe failed or never ran. Tasker's Run Log
+      (⋮ → Monitoring → Run Log, off on `pix11p`) tells the two apart: it
+      writes `/sdcard/Tasker/log/runlog.txt`, readable over adb, and lists
+      every `HTTP Request` action in a run
 
 ## 3b. Authentik (skip only with the reason from §0)
 
