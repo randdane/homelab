@@ -346,6 +346,16 @@ jellyfin.{$DUCKDNS_HOST} {
 		reverse_proxy it-tools:80
 	}
 
+	# SearXNG: no login and nothing stored, so no Authentik (forward-auth
+	# would also break it as a browser search engine).
+	@search {
+		host search.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @search {
+		reverse_proxy searxng:8080
+	}
+
 	# Grocy: browser and the Android app. The web UI is behind Authentik
 	# forward-auth and Grocy trusts the X-Authentik-Username it copies in. The
 	# app authenticates with a GROCY-API-KEY and cannot do a browser login, so

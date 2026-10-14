@@ -1,0 +1,44 @@
+name: searxng
+
+x-homelab:
+  lifecycle: developing
+  host: always-on
+  exposure: lan
+  data: none
+  purpose: Private metasearch -- queries go out from homelab, not the browser
+  prerequisites: PUBLIC_DOMAIN in .env
+  description: Stateless; settings.yml is generated in the container on start
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - SEARXNG_BASE_URL=https://search.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}/
+    # Loopback only: the vhost is the way in, this is break-glass over ssh.
+    ports:
+      - "127.0.0.1:${PORT:-8888}:8080"
+    # Joins `edge` so Caddy can reach it by container name for the
+    # search.<PUBLIC_DOMAIN> vhost.
+    networks:
+      - default
+      - edge
+    labels:
+      homepage.group: Ops
+      homepage.name: SearXNG
+      homepage.description: Private metasearch
+      homepage.href: https://search.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      homepage.icon: searxng
+    # No curl or wget in the image; python3 is what it runs on.
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  edge:
+    external: true

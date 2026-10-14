@@ -150,6 +150,7 @@ PHONE_PROBES = (
     "kuma.{$PUBLIC_DOMAIN}",
     "mealie.{$PUBLIC_DOMAIN}",
     "paperless.{$PUBLIC_DOMAIN}",
+    "search.{$PUBLIC_DOMAIN}",
     "vikunja.{$PUBLIC_DOMAIN}",
 )
 
