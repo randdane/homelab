@@ -213,6 +213,9 @@ NOT_PHONE_PROBED = {
     "syncthing.{$PUBLIC_DOMAIN}":
         "admin UI, not used from the phone; the Syncthing app there shows "
         "whether this peer is connected, which is the thing that matters",
+    "pdf.{$PUBLIC_DOMAIN}":
+        "a desktop tool, not used from the phone; Kuma watches it by "
+        "container name",
 }
 
 

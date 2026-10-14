@@ -42,6 +42,7 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 127.0.0.1:8090:8080 dozzle
 127.0.0.1:8092:80 grocy
 127.0.0.1:8094:8090 beszel-hub
+127.0.0.1:8096:8080 stirling-pdf
 127.0.0.1:8200:8200 duplicati
 127.0.0.1:8384:8384 syncthing
 8686:8686 arr-lidarr

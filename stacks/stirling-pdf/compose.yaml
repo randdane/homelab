@@ -1,0 +1,41 @@
+name: stirling-pdf
+
+x-homelab:
+  lifecycle: developing
+  host: always-on
+  exposure: lan
+  data: none
+  purpose: Local PDF merge, split, compress, OCR -- instead of uploading to a PDF website
+  prerequisites: PUBLIC_DOMAIN in .env
+  description: Stateless with its own login off; Authentik forward-auth is the login
+
+services:
+  stirling-pdf:
+    image: stirlingtools/stirling-pdf:latest
+    container_name: stirling-pdf
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      # 3.x turns its own login on by default, with a user database. Off, it
+      # stores nothing and forward-auth is the only login.
+      - SECURITY_ENABLELOGIN=false
+      - SYSTEM_ENABLEANALYTICS=false
+    # Loopback only: the vhost is the way in, this is break-glass over ssh.
+    ports:
+      - "127.0.0.1:${PORT:-8096}:8080"
+    # Joins `edge` so Caddy can reach it by container name for the
+    # pdf.<PUBLIC_DOMAIN> vhost.
+    networks:
+      - default
+      - edge
+    labels:
+      homepage.group: Ops
+      homepage.name: Stirling PDF
+      homepage.description: Merge, split, compress and OCR PDFs locally
+      homepage.href: https://pdf.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      homepage.icon: stirling-pdf
+    # The image's own healthcheck: curl against /api/v1/info/status.
+
+networks:
+  edge:
+    external: true
