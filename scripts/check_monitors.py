@@ -220,6 +220,9 @@ NO_MONITOR = {
                    "external check, hourly, with OnFailure",
     "dozzle": "a log viewer holding no data that nothing else depends on; "
               "its outage costs one refresh when you next open it",
+    "syncthing": "on `admin`, which Kuma cannot reach; status.py pages on its "
+                 "image healthcheck, and each client's app shows whether "
+                 "this peer is connected",
 }
 
 

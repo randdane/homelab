@@ -32,6 +32,8 @@ a third party, and no NAT punching is needed.
   client would have to be paired again. Restore from backup instead.
 - **Its own password must be set at first start.** Until then, the GUI on
   127.0.0.1 has none.
+- **No Kuma monitor:** it is on `admin`, which Kuma cannot reach. `status.py`
+  pages on the image healthcheck once it is `production`.
 - Android's background limits: the phone app syncs only while it is allowed
   to run. Exempt it from battery optimisation.
 
