@@ -210,6 +210,9 @@ NOT_PHONE_PROBED = {
     "netalertx.{$PUBLIC_DOMAIN}":
         "admin UI, rarely opened; its alerts reach the phone through ntfy, "
         "and status.py pages when its UniFi import stops",
+    "syncthing.{$PUBLIC_DOMAIN}":
+        "admin UI, not used from the phone; the Syncthing app there shows "
+        "whether this peer is connected, which is the thing that matters",
 }
 
 

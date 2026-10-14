@@ -146,6 +146,8 @@ services:
       - uptime-kuma_data:/backup/uptime-kuma:ro
       # Bookmarks and their archived page snapshots.
       - karakeep_data:/backup/karakeep:ro
+      # Synced folders plus the keys behind this peer's device ID.
+      - syncthing_data:/backup/syncthing:ro
       # Job definitions and the block database incrementals depend on.
       - duplicati_config:/backup/duplicati:ro
       # Hand-entered stock, purchase history, chores.
@@ -220,6 +222,8 @@ volumes:
   uptime-kuma_data:
     external: true
   karakeep_data:
+    external: true
+  syncthing_data:
     external: true
   #obsidian-livesync_data:
   #  external: true

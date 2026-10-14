@@ -43,6 +43,7 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 127.0.0.1:8092:80 grocy
 127.0.0.1:8094:8090 beszel-hub
 127.0.0.1:8200:8200 duplicati
+127.0.0.1:8384:8384 syncthing
 8686:8686 arr-lidarr
 127.0.0.1:8888:8080 searxng
 8989:8989 arr-sonarr
@@ -50,4 +51,6 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 9696:9696 arr-gluetun
 127.0.0.1:9925:9000 mealie
 127.0.0.1:20211:20211 netalertx
+22000:22000 syncthing
+22000:22000/udp syncthing
 ```

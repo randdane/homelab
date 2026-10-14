@@ -297,6 +297,19 @@ jellyfin.{$DUCKDNS_HOST} {
 		}
 	}
 
+	# Syncthing: can add a device and share it any folder. Gate, Authentik
+	# forward-auth and its own password; on `admin` like the ones above.
+	@syncthing {
+		host syncthing.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @syncthing {
+		route {
+			import authentik_forward_auth
+			reverse_proxy syncthing:8384
+		}
+	}
+
 	# NetAlertX: the new-device alerter. Holds a UniFi API key. Behind this
 	# gate, Authentik forward-auth, and its own password. Only 20211: its own
 	# Nginx proxies /server to the backend on 20212 internally.
