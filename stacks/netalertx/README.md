@@ -21,6 +21,12 @@ host's loopback only; break-glass is `ssh -N -L 20211:127.0.0.1:20211 homelab`.
    disabled for a 24 h baseline, then clear the new-device flags and enable
    it.
 
+5. Set `NETALERTX_MAC` in `.env` (generator in `.env.example`). NetAlertX
+   lists its own interface as a device, and Docker otherwise gives the
+   container a new MAC at every start, so each restart raised a "new
+   device" alert. Measured 2026-10-15: after a stop/start the MAC held and
+   no new entry appeared.
+
 ## Settings that live only in the UI
 
 Secrets cannot go through the environment: `APP_CONF_OVERRIDE` is written
