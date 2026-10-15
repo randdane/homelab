@@ -34,6 +34,7 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 6767:6767 arr-bazarr
 6881:6881 arr-gluetun
 6881:6881/udp arr-gluetun
+127.0.0.1:7745:7745 homebox
 7878:7878 arr-radarr
 127.0.0.1:8000:8000 paperless-webserver
 127.0.0.1:8010:8000 cup

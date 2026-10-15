@@ -113,6 +113,8 @@ services:
       - paperless_pg-data:/backup/paperless-pg:ro
       # Recipes, images, and the SQLite database.
       - mealie_data:/backup/mealie:ro
+      # Homebox: SQLite plus every receipt and manual attached to an item.
+      - homebox_data:/backup/homebox:ro
       # NetAlertX: the known-device list. Replaceable, but a restore beats a
       # fresh 24 h baseline. Holds the UniFi key -- see stacks/netalertx/README.md.
       - netalertx_data:/backup/netalertx:ro
@@ -184,6 +186,8 @@ volumes:
   #owncloud_mysql:
   #  external: true
   mealie_data:
+    external: true
+  homebox_data:
     external: true
   beszel_data:
     external: true

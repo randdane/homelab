@@ -1,0 +1,65 @@
+name: homebox
+
+x-homelab:
+  lifecycle: developing
+  host: always-on
+  exposure: lan
+  data: precious
+  purpose: Physical belongings -- purchase, warranty, receipts, manuals, where it is
+  prerequisites: PUBLIC_DOMAIN and HBOX_API_KEY_PEPPER in .env
+  description: SQLite plus attachments in one volume; network facts stay in devices.md
+
+services:
+  homebox:
+    # The maintained fork; hay-kot/homebox is archived. Pinned: upgrades
+    # migrate the SQLite schema.
+    image: ghcr.io/sysadminsmedia/homebox:0.26.2-rootless
+    container_name: homebox
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - HBOX_MODE=production
+      # Refuses to start without >= 32 bytes. Rotating it voids every API key.
+      - HBOX_AUTH_API_KEY_PEPPER=${HBOX_API_KEY_PEPPER:?set HBOX_API_KEY_PEPPER in .env}
+      # Upstream default is true. Turn on only long enough to create yours.
+      - HBOX_OPTIONS_ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-false}
+      - HBOX_OPTIONS_ALLOW_ANALYTICS=false
+      - HBOX_OPTIONS_GITHUB_RELEASE_CHECK=false
+      # Behind Caddy: the OIDC redirect URI is built from these.
+      - HBOX_OPTIONS_TRUST_PROXY=true
+      - HBOX_OPTIONS_HOSTNAME=homebox.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      # Default 10 MB is small for scanned manuals.
+      - HBOX_WEB_MAX_FILE_UPLOAD=50
+      # SSO through Authentik, off unless .env turns it on. Access is the
+      # homebox-users binding in Authentik. An unknown subject is linked to
+      # an existing account by email, so verify_email stays off (Authentik's
+      # stock mapping sends false). Password login stays as break-glass.
+      # The backend fetches the issuer over `edge` via @authentik_oidc_internal.
+      - HBOX_OIDC_ENABLED=${OIDC_ENABLED:-false}
+      - HBOX_OIDC_ISSUER_URL=https://authentik.${PUBLIC_DOMAIN}/application/o/homebox/
+      - HBOX_OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - HBOX_OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - HBOX_OIDC_BUTTON_TEXT=Sign in with Authentik
+    ports:
+      - "127.0.0.1:${PORT:-7745}:7745"
+    volumes:
+      - data:/data
+    networks:
+      - default
+      - edge
+    labels:
+      homepage.group: Home
+      homepage.name: Homebox
+      homepage.description: Belongings, receipts, warranties, manuals
+      homepage.href: https://homebox.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      homepage.icon: homebox
+      docker-volume-backup.stop-during-backup: "true"
+    # The image's own healthcheck: wget against /api/v1/status.
+
+networks:
+  edge:
+    external: true
+
+volumes:
+  # SQLite database and every attachment (receipts, manuals, photos).
+  data:
