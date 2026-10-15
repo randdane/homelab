@@ -10,6 +10,13 @@ on `homelab` is break-glass over ssh.
 
 **Authentik:** native OIDC, provider and application `homebox`, group
 `homebox-users`. Password login stays enabled for when Authentik is down.
+Redirect URI `https://homebox.<PUBLIC_DOMAIN>/api/v1/users/login/oidc/callback`,
+built from `HBOX_OPTIONS_HOSTNAME` plus `X-Forwarded-Proto`.
+
+Verified 2026-10-15: incognito login through Authentik; Authentik logged the
+token exchange from Homebox's `edge` address; Homebox logged "migrating
+legacy email-based OIDC user to issuer+subject", i.e. it linked the
+existing password account rather than making a second one.
 
 ## What goes here, and what does not
 
@@ -27,6 +34,7 @@ outage runbooks live there. An item for a networked device takes its
    `docker compose up -d` again. Confirm the register page refuses.
 
 **What will bite you:**
+- Around 25 MB RAM at idle.
 - The pepper is part of the data. Losing it voids every API key; it is in
   `.env`, not the volume, so keep it with the other secrets.
 - Pinned on purpose: releases migrate the database. Read release notes
@@ -35,5 +43,4 @@ outage runbooks live there. An item for a networked device takes its
   the same email, verified or not. Safe only because Authentik is the sole
   issuer and accounts exist only because you made them.
 
-**Unverified:** OIDC end to end, attachment upload over 10 MB, QR labels
-from the phone.
+**Unverified:** attachment upload over 10 MB, QR labels from the phone.
