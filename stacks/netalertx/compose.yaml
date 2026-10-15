@@ -62,9 +62,14 @@ services:
     # `edge`, not `admin`: Caddy, ntfy and Kuma are all there, and the UI has
     # its own password (unlike dozzle and cup). The backend API (20212) is
     # also reachable on edge and refuses every request without API_TOKEN.
+    # A fixed MAC on both networks. Docker gives a container a new random MAC
+    # at every start, and NetAlertX lists its own interface as a device, so
+    # each restart (the daily backup included) raised a "new device" alert.
     networks:
-      - default
-      - edge
+      default:
+        mac_address: ${NETALERTX_MAC:?set NETALERTX_MAC in .env}
+      edge:
+        mac_address: ${NETALERTX_MAC}
     labels:
       homepage.group: Ops
       homepage.name: NetAlertX
