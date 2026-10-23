@@ -152,6 +152,7 @@ PHONE_PROBES = (
     "mealie.{$PUBLIC_DOMAIN}",
     "paperless.{$PUBLIC_DOMAIN}",
     "search.{$PUBLIC_DOMAIN}",
+    "supernote.{$PUBLIC_DOMAIN}",
     "vikunja.{$PUBLIC_DOMAIN}",
 )
 

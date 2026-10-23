@@ -115,6 +115,11 @@ services:
       - mealie_data:/backup/mealie:ro
       # Homebox: SQLite plus every receipt and manual attached to an item.
       - homebox_data:/backup/homebox:ro
+      # Supernote: the sync database, the notes, and the cloud's recycle bin.
+      # db and data restore together.
+      - supernote_db:/backup/supernote-db:ro
+      - supernote_data:/backup/supernote-data:ro
+      - supernote_recycle:/backup/supernote-recycle:ro
       # NetAlertX: the known-device list. Replaceable, but a restore beats a
       # fresh 24 h baseline. Holds the UniFi key -- see stacks/netalertx/README.md.
       - netalertx_data:/backup/netalertx:ro
@@ -188,6 +193,12 @@ volumes:
   mealie_data:
     external: true
   homebox_data:
+    external: true
+  supernote_db:
+    external: true
+  supernote_data:
+    external: true
+  supernote_recycle:
     external: true
   beszel_data:
     external: true

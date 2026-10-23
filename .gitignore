@@ -34,6 +34,8 @@
 # One rsyslog rule, installed into the Jellyfin LXC. Named, not !*.conf: stacks
 # generate .conf files that must stay untracked.
 !stacks/jellyfin/rsyslog-crowdsec.conf.in
+# Ratta's database schema, mounted into MariaDB's init directory.
+!stacks/supernote/supernotedb.sql
 !*.timer
 !.gitignore
 !.env.example
