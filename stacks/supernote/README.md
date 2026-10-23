@@ -60,8 +60,10 @@ HTTPS in reverse proxy environments", so it may work through Caddy on 443.
 - **Previews go through Caddy.** The service tells `notelib` to download
   each note from its public URL, built from `X-Forwarded-Port` (Caddy sends
   443; without it the URL says `:8080` and previews fail with E0314, "The QT
-  program failed to parse the file"). `notelib` is on `edge`, and Caddy
-  admits `edge` for `/api/oss/download*` only.
+  program failed to parse the file"). It uploads the rendered pages back the
+  same way. `notelib` is on `edge`, and Caddy admits `edge` for
+  `/api/oss/download*` and `/api/oss/upload*` only; missing the upload path
+  shows as "Resolution failure" in the portal.
 - **The app logs secrets at INFO/ERROR:** the registration password as an
   unsalted 32-hex hash, and login JWTs. They stay on `homelab` (`docker logs`
   and the `logs` volume, which is excluded from backup).

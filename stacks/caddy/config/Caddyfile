@@ -364,13 +364,13 @@ jellyfin.{$DUCKDNS_HOST} {
 		}
 	}
 
-	# notelib (on `edge`) fetches the note it renders from the URL above,
-	# arriving from its container address, which @supernote refuses. Admitted
-	# for the download path only, gateway excluded -- the same reasoning as
-	# @authentik_oidc_internal.
+	# notelib (on `edge`) fetches the note it renders from the URL above and
+	# uploads the page images back the same way, arriving from its container
+	# address, which @supernote refuses. Admitted for those two signed paths
+	# only, gateway excluded -- the same reasoning as @authentik_oidc_internal.
 	@supernote_notelib_internal {
 		host supernote.{$PUBLIC_DOMAIN}
-		path /api/oss/download*
+		path /api/oss/download* /api/oss/upload*
 		remote_ip 10.201.7.0/24
 		not remote_ip 10.201.7.1
 	}
