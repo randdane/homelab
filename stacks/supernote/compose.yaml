@@ -64,6 +64,12 @@ services:
     image: supernote/notelib:6.9.3
     container_name: supernote-notelib
     restart: unless-stopped
+    # It renders a note by downloading it from the service's public URL
+    # (https://supernote.<domain>/api/oss/download...), so it goes through
+    # Caddy, which admits `edge` for that path only. See the Caddyfile.
+    networks:
+      - default
+      - edge
     # No healthcheck: the image has no curl, wget or nc, and its command ends
     # in `tail -f /dev/null`, so the container stays up even if noteServer dies.
 

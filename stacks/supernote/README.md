@@ -57,6 +57,14 @@ HTTPS in reverse proxy environments", so it may work through Caddy on 443.
   so re-running it is safe. Check a new copy for `DROP` before applying it.
 - **Upgrading the app:** bump `service` (date tags, e.g. `26.10.09`) and
   `notelib` (its own `6.9.x` series), `docker compose up -d`.
+- **Previews go through Caddy.** The service tells `notelib` to download
+  each note from its public URL, built from `X-Forwarded-Port` (Caddy sends
+  443; without it the URL says `:8080` and previews fail with E0314, "The QT
+  program failed to parse the file"). `notelib` is on `edge`, and Caddy
+  admits `edge` for `/api/oss/download*` only.
+- **The app logs secrets at INFO/ERROR:** the registration password as an
+  unsalted 32-hex hash, and login JWTs. They stay on `homelab` (`docker logs`
+  and the `logs` volume, which is excluded from backup).
 - **`notelib` has no healthcheck.** Its command ends in `tail -f /dev/null`,
   so the container stays up even if the converter dies. Symptom: note
   previews fail in the portal.

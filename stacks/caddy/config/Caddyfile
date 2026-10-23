@@ -356,7 +356,28 @@ jellyfin.{$DUCKDNS_HOST} {
 		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
 	}
 	handle @supernote {
-		reverse_proxy supernote-service:8080
+		reverse_proxy supernote-service:8080 {
+			# The container's Nginx builds absolute URLs from this, and
+			# falls back to its own 8080 without it. notelib downloads each
+			# note from such a URL to render previews.
+			header_up X-Forwarded-Port 443
+		}
+	}
+
+	# notelib (on `edge`) fetches the note it renders from the URL above,
+	# arriving from its container address, which @supernote refuses. Admitted
+	# for the download path only, gateway excluded -- the same reasoning as
+	# @authentik_oidc_internal.
+	@supernote_notelib_internal {
+		host supernote.{$PUBLIC_DOMAIN}
+		path /api/oss/download*
+		remote_ip 10.201.7.0/24
+		not remote_ip 10.201.7.1
+	}
+	handle @supernote_notelib_internal {
+		reverse_proxy supernote-service:8080 {
+			header_up X-Forwarded-Port 443
+		}
 	}
 
 	@paperless {
