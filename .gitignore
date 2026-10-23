@@ -61,6 +61,8 @@ stacks/headscale/config/derp/custom.yaml
 *.swp
 # Agent scratch space, not repo content
 /.superpowers/
+# Claude Code per-machine settings; `!*.json` above would otherwise track them
+/.claude/settings.local.json
 # The site-data template. Scoped to this directory, not `!*.hujson`: real
 # site data lives in the SITE_DIR checkout and must never be re-added here.
 !site.example/
