@@ -96,6 +96,11 @@ services:
       - recycle:/home/supernote/recycle
       - convert:/home/supernote/convert
       - logs:/home/supernote/logs
+      # Not optional: the entrypoint starts the web portal with its output
+      # redirected here, and the directory is absent from the image. Without
+      # the mount the redirect fails, the portal never starts, and Nginx
+      # answers 502 while the healthcheck stays green.
+      - cloud-logs:/home/supernote/cloud/logs
     networks:
       - default
       - edge
@@ -106,9 +111,10 @@ services:
       homepage.href: https://supernote.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
       homepage.icon: mdi-notebook-edit
       docker-volume-backup.stop-during-backup: "true"
-    # The image ships bash but no curl, wget or nc.
+    # The image ships bash but no curl, wget or nc. 8080 is Nginx, which
+    # answers even when what it fronts is down; 9888 is the web portal.
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && exec 4<>/dev/tcp/127.0.0.1/9888"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -139,3 +145,6 @@ volumes:
   logs:
     labels:
       homelab.backup: exclude  # application logs
+  cloud-logs:
+    labels:
+      homelab.backup: exclude  # web portal logs
