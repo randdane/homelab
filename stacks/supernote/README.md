@@ -4,8 +4,9 @@
 written on the tablet sync here; PDFs and documents added here appear on the
 tablet. A web portal shows previews of notes.
 **Why I care:** Handwritten notes otherwise live only on the tablet, or on
-Ratta's cloud. Here they land in the nightly volume archive and in the
-weekly backup of the whole VM.
+Ratta's cloud. Here `db`, `data` and `recycle` land in the nightly volume
+archive (03:06, kept 3 days on `homelab`), which Duplicati copies to B2, and
+in the weekly Proxmox Backup Server copy of the whole VM.
 **URL:** `https://supernote.<PUBLIC_DOMAIN>` (gated vhost).
 `127.0.0.1:19072` on `homelab` is break-glass over ssh.
 
