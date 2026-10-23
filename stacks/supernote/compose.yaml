@@ -95,8 +95,8 @@ services:
     ports:
       # Break-glass over ssh; the way in is the vhost.
       - "127.0.0.1:${PORT:-19072}:8080"
-      # 18072 (auto-sync WebSocket) is deliberately not published yet. See
-      # README, "Auto-sync".
+      # 18072 (auto-sync WebSocket) is not published: it works through
+      # Caddy on 443. See README, "Auto-sync".
     volumes:
       - data:/home/supernote/data
       - recycle:/home/supernote/recycle

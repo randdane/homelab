@@ -36,11 +36,17 @@ rows and no credentials. Changelog:
 
 ## Auto-sync
 
-Manual sync uses the HTTP port. Auto-sync is a WebSocket that Ratta serves
-on 18072, which they say cannot be changed. 25.12.17 added "auto sync over
-HTTPS in reverse proxy environments", so it may work through Caddy on 443.
-**Unverified.** If it does not, publish `18072:18072` and allow it in
-`pve/firewall/101.fw` from the tablet's address only.
+Works through Caddy on 443; port 18072 is **not** published and does not
+need to be. The container's Nginx routes `/socket.io/` to the auto-sync
+service internally, and Caddy passes the WebSocket upgrade through. Verified
+2026-10-23: `101` upgrades in the container's Nginx log, then
+`STARTSYNC`/`DOWNLOADFILE` pushes and two uploads without a manual sync.
+
+- **It is a switch on the tablet**, in the Private Cloud sync settings, and
+  it is off after first login. With it off, the tablet still holds the
+  socket open but syncs only on demand.
+- **Recreating Caddy drops the connection.** The tablet reconnects on its
+  own.
 
 ## What will bite you
 
@@ -73,8 +79,9 @@ HTTPS in reverse proxy environments", so it may work through Caddy on 443.
 - **Restore `db` and `data` together.** The database indexes the files; one
   without the other is an inconsistent cloud.
 
-## Unverified
+## Measured
 
-- Auto-sync through Caddy (above).
-- RAM use; measure with `docker stats --no-stream` after first sync.
-- That a server address with no port is accepted by the tablet.
+- RAM ~1.07 GiB after start (node 490 MiB, java 420 MiB, MariaDB 70 MiB,
+  notelib 20 MiB, Redis 8 MiB).
+- The tablet accepts `https://supernote.<PUBLIC_DOMAIN>` with no port.
+
