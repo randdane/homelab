@@ -79,6 +79,18 @@ service internally, and Caddy passes the WebSocket upgrade through. Verified
   previews fail in the portal.
 - **Restore `db` and `data` together.** The database indexes the files; one
   without the other is an inconsistent cloud.
+- **A side-by-side copy (a restore drill) needs two workarounds.** Ratta's
+  `nginx.conf` hard-codes the upstream `supernote-service:9888`, so a copy
+  with any other container name fails its healthcheck until the service gets
+  `supernote-service` as a network alias on the copy's own network. And
+  notelib fetches notes from whatever address the browser used: through an
+  ssh tunnel that is `localhost:<port>`, which inside notelib's container is
+  notelib itself, so previews fail. A socat relay in notelib's network
+  namespace (`--network container:<notelib>`) forwarding that port to
+  `supernote-service:8080` fixes it. The archive stores paths with a leading
+  `/`: extract `/backup/supernote-db`, not `backup/supernote-db`.
+  Drilled 2026-10-26 from the nightly archive: both notebooks listed and
+  previewed.
 
 ## Measured
 
