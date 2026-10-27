@@ -1,0 +1,28 @@
+# crazymax/samba config: one share, the consume folder, for the scanner.
+# The image's defaults are open (guest ok on every share, unknown users mapped
+# to guest, every RFC1918 range allowed); each is closed here or in compose.
+# Read the generated smb.conf with: docker exec paperless-samba testparm -s
+auth:
+  # uid/gid match Paperless's USERMAP_UID/GID, so it can delete what lands.
+  - user: raven
+    group: raven
+    uid: ${PUID}
+    gid: ${PGID}
+    password_file: /run/secrets/raven_password
+
+global:
+  - "server min protocol = SMB2"
+  - "map to guest = never"
+  - "usershare allow guests = no"
+
+share:
+  - name: scans
+    path: /consume
+    browsable: no
+    readonly: no
+    guestok: no
+    validusers: raven
+    writelist: raven
+    options:
+      - "force user = raven"
+      - "force group = raven"

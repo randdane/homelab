@@ -121,6 +121,38 @@ services:
     container_name: paperless-tika
     restart: unless-stopped
 
+  # Scan-to-SMB for the Raven scanner: one share, `scans`, which is the
+  # consume folder. Only the scanner's address gets in (here, in 101.fw and
+  # on dream); README, "The scanner".
+  samba:
+    image: crazymax/samba:4.23.8
+    container_name: paperless-samba
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - CONFIG_FILE=/etc/homelab/samba.yml
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - SAMBA_HOSTS_ALLOW=${SCANNER_IP:?set SCANNER_IP in .env}
+      - SAMBA_FOLLOW_SYMLINKS=no
+      - SAMBA_WIDE_LINKS=no
+    # The host's LAN address, not 0.0.0.0, so the tailnet address is not a
+    # way in. 127.0.0.1 by default: the laptop never serves it.
+    ports:
+      - "${SAMBA_BIND_IP:-127.0.0.1}:445:445"
+    volumes:
+      - consume:/consume
+      - samba-data:/data
+      - ./samba.yml:/etc/homelab/samba.yml:ro
+      # The raven user's password; outside the repo, like karakeep's.
+      - ${HOME}/.local/share/_r_/paperless-samba:/run/secrets:ro
+    healthcheck:
+      # TCP only: hosts allow and no guest refuse any local smbclient probe.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/445"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
 networks:
   edge:
     external: true
@@ -142,4 +174,8 @@ volumes:
   consume:
     labels:
       # Inbox. Files here are deleted as soon as they are ingested.
+      homelab.backup: exclude
+  samba-data:
+    labels:
+      # Samba's passdb and caches, rebuilt from samba.yml on every start.
       homelab.backup: exclude

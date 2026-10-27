@@ -23,13 +23,8 @@ The Postgres password was also hardcoded to `paperless`.
 session cookies with it. A well-known value means anyone can forge a session;
 changing it later logs everyone out.
 
-**The consume folder is a named volume** for now; documents come in by web
-or phone upload. A scanner needs it as a share it can write to — not wired
-up until the scanner model is known. The likely shape is a bind mount:
-
-```yaml
-      - /srv/scans:/usr/src/paperless/consume
-```
+**The consume folder is a named volume**, filled by web or phone upload and
+by the scanner over SMB (below).
 
 Files are deleted from it once ingested, which is why it is excluded from
 backup along with `export` (a manual dump target) and `redis-data` (the task
@@ -70,3 +65,34 @@ Verified 2026-10-05 from an incognito window: Authentik logged a
 `/application/o/token/` 200 from `paperless-webserver`'s `edge` address, and
 Paperless holds one user (`paperless`) with one `authentik` social account.
 Authentik group: `paperless-users`.
+
+## The scanner
+
+The Raven scanner (`devices.md`, `raven`) scans to an SMB share, so scans never
+leave the house. The `samba` service (`crazymax/samba`, config in `samba.yml`)
+serves one share, `scans`, which is the `consume` volume itself: Paperless
+ingests a scan seconds after it lands and deletes it.
+
+Locked to the scanner at three layers, each proved alone:
+
+- **Samba:** `hosts allow` is `SCANNER_IP` only; one user, `raven`; guest off,
+  unknown users not mapped to guest; SMB1 refused (`server min protocol =
+  SMB2`); the share is not listed. The image defaults to the opposite on
+  several of these (guest ok, every RFC1918 range); `samba.yml` and the
+  compose environment close each.
+- **`101.fw`:** tcp 445 from the scanner's address only.
+- **`dream`:** the `iot` VLAN reaches `homelab` on 445 from the scanner only.
+
+445 is published on `SAMBA_BIND_IP` (`homelab`'s LAN address), not 0.0.0.0,
+so the tailnet address is not a way in. Unset, it binds 127.0.0.1, which is
+what the laptop wants.
+
+**Password:** `~/.local/share/_r_/paperless-samba/raven_password` on the host
+(dir 700, file 600, no trailing newline), mounted at `/run/secrets`. The same
+password goes into the scanner's Network destination. Changing it: edit the
+file, `docker compose up -d --force-recreate samba`, update the scanner.
+
+**Files are owned by `PUID:PGID`** (`force user = raven`, with `raven` created
+at Paperless's uid), so Paperless can delete them after ingesting.
+
+**Check the generated config:** `docker exec paperless-samba testparm -s`.
