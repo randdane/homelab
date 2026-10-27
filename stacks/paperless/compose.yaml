@@ -147,8 +147,9 @@ services:
       # The raven user's password; outside the repo, like karakeep's.
       - ${HOME}/.local/share/_r_/paperless-samba:/run/secrets:ro
     healthcheck:
-      # TCP only: hosts allow and no guest refuse any local smbclient probe.
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/445"]
+      # Process check, not a connection: hosts allow refuses loopback and
+      # logged "Denied connection" every 30 s.
+      test: ["CMD", "pgrep", "-x", "smbd"]
       interval: 30s
       timeout: 5s
       retries: 3
