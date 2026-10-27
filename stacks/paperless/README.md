@@ -73,7 +73,7 @@ leave the house. The `samba` service (`crazymax/samba`, config in `samba.yml`)
 serves one share, `scans`, which is the `consume` volume itself: Paperless
 ingests a scan seconds after it lands and deletes it.
 
-Locked to the scanner at three layers, each proved alone:
+Locked to the scanner at two layers, each proved alone:
 
 - **Samba:** `hosts allow` is `SCANNER_IP` only; one user, `raven`; guest off,
   unknown users not mapped to guest; SMB1 refused (`server min protocol =
@@ -81,7 +81,9 @@ Locked to the scanner at three layers, each proved alone:
   several of these (guest ok, every RFC1918 range); `samba.yml` and the
   compose environment close each.
 - **`101.fw`:** tcp 445 from the scanner's address only.
-- **`dream`:** the `iot` VLAN reaches `homelab` on 445 from the scanner only.
+
+`dream` is not a layer here: it has no rules for the `iot` VLAN (read
+2026-10-26), so inter-VLAN traffic is routed and `101.fw` is the gate.
 
 445 is published on `SAMBA_BIND_IP` (`homelab`'s LAN address), not 0.0.0.0,
 so the tailnet address is not a way in. Unset, it binds 127.0.0.1, which is

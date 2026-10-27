@@ -122,8 +122,8 @@ services:
     restart: unless-stopped
 
   # Scan-to-SMB for the Raven scanner: one share, `scans`, which is the
-  # consume folder. Only the scanner's address gets in (here, in 101.fw and
-  # on dream); README, "The scanner".
+  # consume folder. Only the scanner's address gets in (here and in
+  # 101.fw); README, "The scanner".
   samba:
     image: crazymax/samba:4.23.8
     container_name: paperless-samba
