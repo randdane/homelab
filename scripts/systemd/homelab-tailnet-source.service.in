@@ -38,7 +38,7 @@
 # regardless of the correction above.
 #
 # The 2026-09-09 outage that prompted all this was the same failure, and is
-# no longer unexplained. $SITE_DIR/docs/devices.md carries the mechanism.
+# no longer unexplained. $SITE_DIR/docs/networks.md carries the mechanism.
 #
 # PartOf both tailscaled and docker: each rebuilds the nat table on restart
 # and neither preserves a foreign rule.

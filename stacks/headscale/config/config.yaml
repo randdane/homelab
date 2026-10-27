@@ -366,7 +366,7 @@ dns:
   # stops answering has no fallback and resolves nothing at all -- not even
   # tailnet names. That happened on a phone: every name failed while every
   # literal IP worked, so it presented as "Tailscale killed my internet"
-  # rather than as a DNS fault. See $SITE_DIR/docs/devices.md.
+  # rather than as a DNS fault. See $SITE_DIR/docs/networks.md.
   #
   # With `false` each node keeps its own working resolvers and MagicDNS is a
   # split route for `base_domain` only, so one client's broken responder costs

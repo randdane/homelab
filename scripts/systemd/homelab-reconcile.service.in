@@ -34,7 +34,7 @@ Type=oneshot
 # Deliberately NOT RemainAfterExit=yes. This must be re-runnable by hand
 # after any dockerd restart, and `systemctl start` on an already-active
 # oneshot is a silent no-op -- the trap that made the first version of
-# homelab-tailnet-source-check.service useless. Measured; see $SITE_DIR/docs/devices.md.
+# homelab-tailnet-source-check.service useless. Measured; see $SITE_DIR/docs/networks.md.
 WorkingDirectory=@REPO@
 @USERLINES@
 Environment=PATH=@PATH@

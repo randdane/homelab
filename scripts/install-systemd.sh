@@ -119,7 +119,7 @@ UNITS+=(homelab-digest.service homelab-digest.timer)
 # down by design, so a boot-time reconcile there would start all of them.
 UNITS+=(homelab-reconcile.service)
 # Root-only: keeps every remote_ip-gated vhost reachable from the tailnet
-# ($SITE_DIR/docs/devices.md). A hand-install until 2026-09-25, forgotten twice.
+# ($SITE_DIR/docs/networks.md). A hand-install until 2026-09-25, forgotten twice.
 UNITS+=(homelab-tailnet-source.service homelab-tailnet-source-check.service
         homelab-tailnet-source-check.timer)
 install -m 755 "$REPO/scripts/tailnet-source-rule.sh" /usr/local/sbin/tailnet-source-rule.sh

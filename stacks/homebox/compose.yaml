@@ -7,7 +7,7 @@ x-homelab:
   data: precious
   purpose: Physical belongings -- purchase, warranty, receipts, manuals, where it is
   prerequisites: PUBLIC_DOMAIN and HBOX_API_KEY_PEPPER in .env
-  description: SQLite plus attachments in one volume; network facts stay in devices.md
+  description: SQLite plus attachments in one volume; network facts stay in devices.md and networks.md
 
 services:
   homebox:

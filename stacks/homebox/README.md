@@ -21,8 +21,8 @@ existing password account rather than making a second one.
 ## What goes here, and what does not
 
 Ownership and physical facts only. Network facts (addresses, MACs, VLANs,
-why a thing is configured the way it is) stay in `devices.md` in
-`homelab-private`: it is in git, readable when `homelab` is down, and the
+why a thing is configured the way it is) stay in `devices.md` and `networks.md` in
+`homelab-private`: they are in git, readable when `homelab` is down, and the
 outage runbooks live there. An item for a networked device takes its
 `devices.md` name (e.g. `pve`) and carries no IP or MAC.
 

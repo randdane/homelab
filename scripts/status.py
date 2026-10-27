@@ -548,7 +548,7 @@ def userland_proxy_problem(path=DAEMON_JSON):
     so the container sees the proxy rather than the client. Every Caddy vhost
     gated on `remote_ip` then refuses everything, closing connections with
     status=0 -- which looks like a network failure, not a rejection. See
-    stacks/caddy/README.md and $SITE_DIR/docs/devices.md.
+    stacks/caddy/README.md and $SITE_DIR/docs/networks.md.
 
     This is the LATENT half of the check: it reports the configuration that
     will apply at the next daemon restart. docker_proxy_running_problem()
@@ -696,7 +696,7 @@ def caddy_source_problem(timeout=30):
             f"from {gateway}, the edge bridge gateway (e.g. {hosts[0]}) -- "
             f"something is rewriting client source addresses, so every "
             f"remote_ip-gated vhost refuses those clients. Check the nat "
-            f"POSTROUTING order and userland-proxy first ($SITE_DIR/docs/devices.md).")
+            f"POSTROUTING order and userland-proxy first ($SITE_DIR/docs/networks.md).")
 
 
 def daemon_problem():

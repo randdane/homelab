@@ -2,7 +2,7 @@
 #
 # FOR the laptop ONLY, and NOT installed by scripts/install-systemd.sh -- that
 # script drives the server and works from an explicit unit list, so this file is
-# inert until installed by hand. See $SITE_DIR/docs/devices.md.
+# inert until installed by hand. See $SITE_DIR/docs/networks.md.
 #
 # The problem: homelab advertises 192.168.1.0/24 into the tailnet, and the laptop
 # runs with --accept-routes, so tailscaled installs that /24 in table 52.

@@ -23,7 +23,7 @@ There is deliberately NO positive probe here. homelab's own source address is
 LOCAL, so Docker's LOCAL-source masquerade rewrites a self-probe and the
 `homelab-tailnet-source` exemption is what makes it succeed -- a self-probe
 would test that workaround rather than the path real clients take. See
-$SITE_DIR/docs/devices.md and the spec.
+$SITE_DIR/docs/networks.md and the spec.
 
 Exit codes: 0 clean, 1 a real problem, 2 could not check.
 """

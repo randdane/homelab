@@ -14,7 +14,7 @@
 #
 # NOT done here, on purpose:
 #   - the VLAN, dream's inter-VLAN block and Pi-hole's "permit all origins" --
-#     router and appliance config, by hand (devices.md)
+#     router and appliance config, by hand (networks.md)
 #   - template 9000 -- homelab-vm.yml builds it; this play only requires it
 #   - Docker, agent stacks, API keys -- the kennel project; the VM gets its own
 #     capped keys, never anything from the workstation's token store

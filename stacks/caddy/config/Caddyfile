@@ -208,7 +208,7 @@ jellyfin.{$DUCKDNS_HOST} {
 	# only -- not the admin UI or the login flows.
 	#
 	# The gateway is excluded on purpose. SNAT'd traffic arrives as
-	# 10.201.7.1 (devices.md, "docker-proxy was rewriting the source
+	# 10.201.7.1 (networks.md, "docker-proxy was rewriting the source
 	# address"), and admitting it would admit whatever got rewritten --
 	# which is why widening to the whole bridge was rejected before. If
 	# `edge` is ever recreated on a different subnet, both lines change.
