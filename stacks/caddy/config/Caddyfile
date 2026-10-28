@@ -421,7 +421,7 @@ jellyfin.{$DUCKDNS_HOST} {
 			# The scheme is required: v1.0.2 rejects a bare host, despite its README.
 			sablier http://sablier:10000 {
 				group stirling-pdf
-				session_duration 5m # TEMPORARY for testing, back to 30m after
+				session_duration 30m
 				dynamic {
 					display_name Stirling PDF
 				}
