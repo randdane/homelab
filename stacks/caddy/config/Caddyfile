@@ -293,6 +293,14 @@ jellyfin.{$DUCKDNS_HOST} {
 	handle @duplicati {
 		route {
 			import authentik_forward_auth
+			# Stopped when idle by stacks/sablier.
+			sablier http://sablier:10000 {
+				group duplicati
+				session_duration 30m
+				dynamic {
+					display_name Duplicati
+				}
+			}
 			reverse_proxy duplicati:8200
 		}
 	}

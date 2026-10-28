@@ -85,7 +85,20 @@ services:
     networks:
       - default
       - admin
+    # So Sablier knows when it is ready. `/` answers 200 without a login;
+    # the API answers 401. curl is in the image.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8200/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     labels:
+      # Stopped when idle. Its vhost wakes it for the UI, and
+      # scripts/run_backups.sh starts and stops it for the nightly offsite
+      # run, which reaches it on loopback and never passes Caddy.
+      sablier.enable: "true"
+      sablier.group: duplicati
       homepage.group: Ops
       homepage.name: Duplicati
       homepage.description: Encrypted offsite backups

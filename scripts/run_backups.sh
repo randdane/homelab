@@ -107,8 +107,20 @@ PW="$(grep -E '^WEBSERVICE_PASSWORD=' "$DUPLICATI_ENV" | cut -d= -f2-)"
 JOBS="$(grep -E '^DUPLICATI_JOBS=' "$DUPLICATI_ENV" | cut -d= -f2- | tr -d '"' || true)"
 [ -n "$JOBS" ] || fail "DUPLICATI_JOBS is empty in $DUPLICATI_ENV"
 
+# Duplicati sits stopped between runs (stacks/sablier stops it when idle, and
+# nothing else needs it), so start it for this run and stop it again on any
+# exit. Left alone if it was already running -- someone is in its web UI, and
+# Sablier will stop it when that session ends.
+DUPLICATI_CONTAINER=duplicati
+if [ "$(docker inspect -f '{{.State.Running}}' "$DUPLICATI_CONTAINER" 2>/dev/null)" = "false" ]; then
+    log "starting $DUPLICATI_CONTAINER for this run"
+    docker start "$DUPLICATI_CONTAINER" >/dev/null || fail "could not start $DUPLICATI_CONTAINER"
+    # shellcheck disable=SC2064  # expand the name now
+    trap "docker stop $DUPLICATI_CONTAINER >/dev/null 2>&1 && log 'stopped $DUPLICATI_CONTAINER' || log 'could not stop $DUPLICATI_CONTAINER'" EXIT
+fi
+
 # Duplicati carries docker-volume-backup.stop-during-backup=true, so the
-# archive step above just stopped and restarted it. Its web service needs a
+# archive step above stopped and restarted it if it was running. Its web service needs a
 # moment before it will answer; without this wait the login returns an empty
 # body and the whole run fails *after* a successful archive.
 log "waiting for Duplicati to accept connections"

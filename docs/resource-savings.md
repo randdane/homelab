@@ -19,7 +19,8 @@ a wait on the first request is acceptable. Browsers get a waiting page
 (`dynamic`); an API path whose client cannot follow one gets `blocking`,
 which holds the request until the container is up. Does not fit anything
 reached without Caddy: phone sync over another port, webhooks, SMB,
-schedules, or another container calling it. A stopped container reads as
+schedules, or another container calling it -- unless that caller starts
+and stops it itself, as `run_backups.sh` does for Duplicati. A stopped container reads as
 down to Uptime Kuma, so its monitor goes; `status.py` reports it `idle`
 rather than `down`, and `check_monitors.py` skips it. How to add one:
 `stacks/sablier/README.md`.
