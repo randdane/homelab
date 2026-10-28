@@ -18,7 +18,7 @@ handed back on demand.
 | Date | Change | Saves | Cost |
 |---|---|---|---|
 | 2026-10-26 | VM RAM 12 to 16 GiB | +4 GiB headroom (not a saving) | 4 GiB less for other guests on `pve` |
-| 2026-10-28 | Sablier stops Stirling PDF when idle (`stacks/sablier`) | ~1 GiB while idle | ~75 s wait on the first visit; two small containers (Sablier and its socket proxy) |
+| 2026-10-28 | Sablier stops Stirling PDF when idle (`stacks/sablier`) | ~0.8 GiB while idle (available 7.4 to 8.2 GiB, measured 2026-10-28) | ~75 s wait on the first visit; two small containers (Sablier and its socket proxy) |
 
 Baseline 2026-10-28, before Sablier: 16 GiB total, 8.6 GiB used,
 7.4 GiB available, no swap.
