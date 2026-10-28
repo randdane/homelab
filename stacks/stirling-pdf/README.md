@@ -26,8 +26,13 @@ OCR languages in the image: English, German, French, Simplified Chinese and
 a couple more (`tesseract --list-langs`). Others need the `-fat` image or
 mounted tessdata.
 
-**What will bite you:** around 0.9 GB RAM at idle, the largest of the
+**What will bite you:** around 1 GB RAM while running, the largest of the
 single-container tools. A big OCR job takes more.
 
 **Unverified:** OCR quality on `raven` scans, and handing results to
 Paperless.
+
+**Stopped when idle** by `stacks/sablier` since 2026-10-28: 30 minutes
+after the last request. The next visit shows a waiting page for about 75 s,
+then the app. `127.0.0.1:8096` answers only while it is running; start it with
+`docker start stirling-pdf` for API use from the host.

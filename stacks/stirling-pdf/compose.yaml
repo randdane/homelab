@@ -34,6 +34,9 @@ services:
       homepage.description: Merge, split, compress and OCR PDFs locally
       homepage.href: https://pdf.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
       homepage.icon: stirling-pdf
+      # Stopped when idle, started by the pdf vhost. stacks/sablier
+      sablier.enable: "true"
+      sablier.group: stirling-pdf
     # The image's own healthcheck: curl against /api/v1/info/status.
 
 networks:

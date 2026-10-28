@@ -1,0 +1,82 @@
+name: sablier
+
+x-homelab:
+  lifecycle: developing
+  host: always-on
+  exposure: lan
+  data: none
+  purpose: Stops idle containers and starts them again on the first request through Caddy, to save RAM
+  prerequisites: DOCKER_GID in this stack's .env; Caddy built with the sablier plugin; the external `admin` network
+  description: Caddy asks it to start a group before proxying; it stops the group when the session expires. See docs/resource-savings.md
+
+services:
+  sablier:
+    image: sablierapp/sablier:1.18.0
+    container_name: sablier
+    restart: unless-stopped
+    command:
+      - start
+      - --provider.name=docker
+      # Idle time before a group is stopped. Every request through the
+      # Caddy handler extends it, so this is "30 minutes after the last page
+      # load", not "30 minutes after start".
+      - --sessions.default-duration=30m
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - DOCKER_HOST=tcp://socket-proxy:2375
+      - NO_COLOR=1
+    # It holds no socket and writes nothing, so it needs neither root nor a
+    # writable filesystem.
+    user: "65534:65534"
+    read_only: true
+    depends_on: [socket-proxy]
+    # `admin`, not `edge`: Caddy is the only caller. On `edge`, any
+    # public-facing container could ask it to start or stop a group.
+    networks:
+      - default
+      - admin
+    healthcheck:
+      test: ["CMD", "/bin/sablier", "health"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  socket-proxy:
+    # wollomatic, not tecnativa like the other stacks. Sablier needs POST
+    # start/stop, and tecnativa can only grant POST as a whole: POST=1 with
+    # CONTAINERS=1 also allows POST /containers/create, and a privileged
+    # container that bind-mounts / is host root. wollomatic takes a regex per
+    # method, so POST is limited to start/stop/wait on the managed containers.
+    image: wollomatic/socket-proxy:1.13.1
+    container_name: sablier-socket-proxy
+    restart: unless-stopped
+    # Runs as nobody; the socket is root:docker 0660, so it needs the
+    # host's docker group. Host-specific, hence .env.
+    user: "65534:${DOCKER_GID:?set DOCKER_GID in this stack's .env -- getent group docker}"
+    read_only: true
+    command:
+      - -listenip=0.0.0.0
+      - -allowfrom=sablier
+      - -allowhealthcheck
+      - -watchdoginterval=3600
+      - -stoponwatchdog
+      # Patterns are anchored by the proxy (^...$).
+      - -allowHEAD=/_ping
+      - -allowGET=(/_ping|/v1\.\d+/(version|events.*|containers/.*))
+      # The containers Sablier may start and stop, by name. Adding a group
+      # means adding its container names here too, or Sablier gets a 403.
+      - -allowPOST=/v1\.\d+/containers/(stirling-pdf)/(start|stop|wait)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "/healthcheck"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    # No ports: reachable only from inside this stack's network.
+
+networks:
+  # Caddy plus the UIs with no login of their own. docs/host-setup.md 12
+  admin:
+    external: true

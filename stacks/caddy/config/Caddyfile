@@ -415,6 +415,16 @@ jellyfin.{$DUCKDNS_HOST} {
 	handle @pdf {
 		route {
 			import authentik_forward_auth
+			# After forward-auth, so only a logged-in request can wake it.
+			# Stopped when idle by stacks/sablier; the first request shows
+			# a waiting page for the ~75 s Stirling takes to start.
+			sablier sablier:10000 {
+				group stirling-pdf
+				session_duration 30m
+				dynamic {
+					display_name Stirling PDF
+				}
+			}
 			reverse_proxy stirling-pdf:8080
 		}
 	}

@@ -12,7 +12,7 @@
 # Rebuild after changing the version or the plugin list:
 #   docker compose build --pull caddy && docker compose up -d caddy
 #
-# Takes about 4.5 minutes on the first server. `caddy list-modules | grep -E 'crowdsec|porkbun'`
+# Takes about 4.5 minutes on the first server. `caddy list-modules | grep -E 'crowdsec|porkbun|sablier'`
 # in the built image is the check that it worked -- a plugin that failed to
 # register still produces a working caddy binary, just without the module,
 # and the failure then surfaces as a Caddyfile parse error.
@@ -24,26 +24,32 @@
 # docs/lessons-learned.md 19 -- the last hostname issued a per-name
 # certificate here was being scanned 58 minutes later. DNS-01 also works for
 # names that resolve to private addresses, which HTTP-01 cannot do at all.
-# Both plugins are PINNED, and that is not tidiness. An unpinned `--with`
+# Every plugin is PINNED, and that is not tidiness. An unpinned `--with`
 # resolves to whatever is latest at build time, so `docker compose build`
 # tomorrow can produce different code under the same `homelab/caddy-crowdsec:
 # 2.11.7` tag -- a tag that names the Caddy version and reads as if it pinned
-# the whole image. The two things that would change silently are the only
+# the whole image. The things that would change silently include the only
 # active defence on the public vhost and the module that holds the Porkbun
 # API credentials.
 #
 # Versions read out of the running binary on the first server 2026-09-03, so this pins
 # what is deployed rather than adopting a newer one by accident:
 #
-#   docker exec caddy caddy build-info | grep -E 'hslatman|caddy-dns/porkbun'
+#   docker exec caddy caddy build-info | grep -E 'hslatman|caddy-dns/porkbun|sablierapp'
 #
-# Bumping either one is a deliberate edit here, followed by that same command
+# The Sablier handler (added 2026-10-28) lets Caddy start an idle container
+# on the first request -- see stacks/sablier and docs/resource-savings.md.
+# Pinned at its latest release, not read from a running binary, since it was
+# new here.
+#
+# Bumping any of them is a deliberate edit here, followed by that same command
 # against the rebuilt image.
 FROM caddy:2.11.7-builder AS builder
 
 RUN xcaddy build \
     --with github.com/hslatman/caddy-crowdsec-bouncer/http@v0.14.1 \
-    --with github.com/caddy-dns/porkbun@v0.3.1
+    --with github.com/caddy-dns/porkbun@v0.3.1 \
+    --with github.com/sablierapp/sablier-caddy-plugin@v1.0.2
 
 FROM caddy:2.11.7
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
@@ -51,7 +57,8 @@ COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 # So the image says what is in it without running it. The tag cannot: it names
 # the Caddy version only, and both plugins move independently of Caddy.
 LABEL org.opencontainers.image.title="caddy-crowdsec-porkbun" \
-      org.opencontainers.image.description="Caddy 2.11.7 with the CrowdSec bouncer and the Porkbun DNS provider compiled in" \
+      org.opencontainers.image.description="Caddy 2.11.7 with the CrowdSec bouncer, the Porkbun DNS provider and the Sablier handler compiled in" \
       homelab.caddy.version="2.11.7" \
       homelab.plugin.crowdsec-bouncer="v0.14.1" \
-      homelab.plugin.porkbun="v0.3.1"
+      homelab.plugin.porkbun="v0.3.1" \
+      homelab.plugin.sablier="v1.0.2"
