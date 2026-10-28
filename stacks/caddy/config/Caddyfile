@@ -418,7 +418,8 @@ jellyfin.{$DUCKDNS_HOST} {
 			# After forward-auth, so only a logged-in request can wake it.
 			# Stopped when idle by stacks/sablier; the first request shows
 			# a waiting page for the ~75 s Stirling takes to start.
-			sablier sablier:10000 {
+			# The scheme is required: v1.0.2 rejects a bare host, despite its README.
+			sablier http://sablier:10000 {
 				group stirling-pdf
 				session_duration 30m
 				dynamic {
