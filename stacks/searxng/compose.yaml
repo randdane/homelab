@@ -26,6 +26,9 @@ services:
       - default
       - edge
     labels:
+      # Stopped when idle, started by its vhost. stacks/sablier
+      sablier.enable: "true"
+      sablier.group: searxng
       homepage.group: Ops
       homepage.name: SearXNG
       homepage.description: Private metasearch

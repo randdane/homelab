@@ -48,6 +48,9 @@ services:
       - default
       - edge
     labels:
+      # Stopped when idle, started by its vhost. stacks/sablier
+      sablier.enable: "true"
+      sablier.group: homebox
       homepage.group: Home
       homepage.name: Homebox
       homepage.description: Belongings, receipts, warranties, manuals

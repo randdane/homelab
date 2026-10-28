@@ -35,6 +35,9 @@ services:
     volumes:
       - config:/config
     labels:
+      # Stopped when idle, started by its vhost. stacks/sablier
+      sablier.enable: "true"
+      sablier.group: grocy
       homepage.group: Home
       homepage.name: Grocy
       homepage.description: Stock, chores, and what expires this week

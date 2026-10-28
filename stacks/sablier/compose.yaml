@@ -66,7 +66,7 @@ services:
       - -allowGET=(/_ping|/v1\.\d+/(version|events.*|containers/.*))
       # The containers Sablier may start and stop, by name. Adding a group
       # means adding its container names here too, or Sablier gets a 403.
-      - -allowPOST=/v1\.\d+/containers/(stirling-pdf)/(start|stop|wait)
+      - -allowPOST=/v1\.\d+/containers/(stirling-pdf|homebox|grocy|mealie|searxng)/(start|stop|wait)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:

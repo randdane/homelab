@@ -4,7 +4,7 @@
 request for them reaches Caddy.
 **Why I care:** RAM on `homelab`. Some tools sit idle for days and still
 hold a gigabyte. Stopped, they hold nothing. What it has saved so far:
-`docs/resource-savings.md`.
+`$SITE_DIR/docs/resource-savings.md`.
 **URL:** none. It has no UI; Caddy talks to it on the `admin` network at
 `sablier:10000`.
 

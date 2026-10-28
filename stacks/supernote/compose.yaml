@@ -92,6 +92,11 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
       - NOTELIB_HOST=notelib
+      # Heap cap. Unset, Java 8 allows a quarter of host RAM (4 GiB on
+      # homelab); measured 2026-10-28 it used 120 MiB of a 250 MiB heap.
+      # JAVA_TOOL_OPTIONS because the image's own java command line is
+      # fixed. An OutOfMemoryError in the log means raise -Xmx.
+      - JAVA_TOOL_OPTIONS=-Xms64m -Xmx384m
     ports:
       # Break-glass over ssh; the way in is the vhost.
       - "127.0.0.1:${PORT:-19072}:8080"

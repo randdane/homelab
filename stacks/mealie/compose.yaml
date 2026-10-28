@@ -59,6 +59,9 @@ services:
       - default
       - edge
     labels:
+      # Stopped when idle, started by its vhost. stacks/sablier
+      sablier.enable: "true"
+      sablier.group: mealie
       homepage.group: Home
       homepage.name: Mealie
       homepage.description: Recipes, meal plans, and the shopping list

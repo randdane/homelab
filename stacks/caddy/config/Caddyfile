@@ -340,7 +340,17 @@ jellyfin.{$DUCKDNS_HOST} {
 		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
 	}
 	handle @mealie {
-		reverse_proxy mealie:9000
+		# Stopped when idle by stacks/sablier.
+		route {
+			sablier http://sablier:10000 {
+				group mealie
+				session_duration 30m
+				dynamic {
+					display_name Mealie
+				}
+			}
+			reverse_proxy mealie:9000
+		}
 	}
 
 	@homebox {
@@ -348,7 +358,17 @@ jellyfin.{$DUCKDNS_HOST} {
 		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
 	}
 	handle @homebox {
-		reverse_proxy homebox:7745
+		# Stopped when idle by stacks/sablier.
+		route {
+			sablier http://sablier:10000 {
+				group homebox
+				session_duration 30m
+				dynamic {
+					display_name Homebox
+				}
+			}
+			reverse_proxy homebox:7745
+		}
 	}
 
 	@supernote {
@@ -403,7 +423,17 @@ jellyfin.{$DUCKDNS_HOST} {
 		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
 	}
 	handle @search {
-		reverse_proxy searxng:8080
+		# Stopped when idle by stacks/sablier.
+		route {
+			sablier http://sablier:10000 {
+				group searxng
+				session_duration 30m
+				dynamic {
+					display_name SearXNG
+				}
+			}
+			reverse_proxy searxng:8080
+		}
 	}
 
 	# Stirling PDF: stores nothing, but runs LibreOffice and Tesseract on
@@ -442,12 +472,28 @@ jellyfin.{$DUCKDNS_HOST} {
 		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
 	}
 	handle @grocy {
+		# Stopped when idle by stacks/sablier. The app cannot follow a
+		# waiting page, so /api/* holds the request until Grocy is up.
 		route /api/* {
 			request_header -X-Authentik-Username
+			sablier http://sablier:10000 {
+				group grocy
+				session_duration 30m
+				blocking {
+					timeout 1m
+				}
+			}
 			reverse_proxy grocy:80
 		}
 		route {
 			import authentik_forward_auth
+			sablier http://sablier:10000 {
+				group grocy
+				session_duration 30m
+				dynamic {
+					display_name Grocy
+				}
+			}
 			reverse_proxy grocy:80
 		}
 	}
