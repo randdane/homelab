@@ -112,6 +112,11 @@ services:
     # during a bulk recrawl on 2026-09-28 and tabs died with "Target
     # crashed" / "Page crashed" on about 1 crawl in 6.
     shm_size: 1gb
+    # Guard against runaway growth, not a saving: peak was 691 MiB over
+    # 2026-10-27/28, and /dev/shm counts against this, so it leaves room for
+    # most of the 1 GB above during a bulk recrawl. At the cap it swaps
+    # (zram), then the kernel kills a tab, failing that one crawl.
+    mem_limit: 1536m
     # No `command:` override. The legacy definition passed Chrome flags that
     # suited the old alpine-chrome image; this image ships its own run.sh
     # which starts Chrome on 9223 and socat-forwards 9222 to it. Overriding
