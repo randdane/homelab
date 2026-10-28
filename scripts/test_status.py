@@ -117,13 +117,13 @@ def test_description_is_optional_and_may_be_absent():
     assert intent["description"] is None
 
 
-def _svc(running=True, health=None, status=None, restarts=0):
+def _svc(running=True, health=None, status=None, restarts=0, sablier=False):
     """status defaults to agree with `running`, which is what Docker reports
     for every container that is not mid-crash-loop."""
     if status is None:
         status = "running" if running else "exited"
     return {"status": status, "running": running, "health": health,
-            "restarts": restarts, "image": "x:1"}
+            "restarts": restarts, "image": "x:1", "sablier": sablier}
 
 
 DEFINED = {"grafana", "loki"}
@@ -1411,3 +1411,22 @@ def test_rewritten_requests_finds_only_the_gateway():
     ]
     assert status.rewritten_requests(lines, gw) == ["vikunja.example.com"]
     assert status.rewritten_requests(lines[:1], gw) == []
+
+
+def test_stopped_by_sablier_is_idle_not_down():
+    observed = {n: _svc(running=False, status="exited", sablier=True) for n in DEFINED}
+    assert status.aggregate_status(
+        DEFINED, observed, daemon_ok=True, ever_ran=True) == "idle"
+
+
+def test_exited_without_sablier_is_still_down():
+    observed = {n: _svc(running=False, status="exited") for n in DEFINED}
+    assert status.aggregate_status(
+        DEFINED, observed, daemon_ok=True, ever_ran=True) == "down"
+
+
+def test_sablier_crash_loop_is_not_idle():
+    """A crash loop reads `restarting`, never `exited`, so it still alerts."""
+    observed = {n: _svc(running=False, status="restarting", sablier=True) for n in DEFINED}
+    assert status.aggregate_status(
+        DEFINED, observed, daemon_ok=True, ever_ran=True) == "down"

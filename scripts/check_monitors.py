@@ -246,6 +246,11 @@ def production_stacks(dirs=None):
             continue
         if (config.get("x-homelab") or {}).get("lifecycle") != "production":
             continue
+        # Stopped when idle by stacks/sablier, so a monitor would be red
+        # most of the time. status.py reports it `idle` instead of `down`.
+        if any((spec.get("labels") or {}).get("sablier.enable") == "true"
+               for spec in (config.get("services") or {}).values()):
+            continue
         out[d.name] = stack_identifiers(config, d.name, aliases)
     return out
 

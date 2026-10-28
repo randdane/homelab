@@ -170,6 +170,16 @@ def is_up(service):
     return service["running"] and service.get("status") != "restarting"
 
 
+def is_idle(service):
+    """Stopped by Sablier on purpose (stacks/sablier), not down.
+
+    `exited` alone would also match a crash, but every service here is
+    `restart: unless-stopped`, so a crashed one is restarted, and reads
+    `restarting` if it keeps failing. Only an API stop leaves it exited.
+    """
+    return bool(service.get("sablier")) and service.get("status") == "exited"
+
+
 def aggregate_status(defined, observed, *, daemon_ok, ever_ran):
     """Collapse a stack's services into one status.
 
@@ -182,16 +192,20 @@ def aggregate_status(defined, observed, *, daemon_ok, ever_ran):
         return "unknown"
 
     running = {name for name, s in observed.items() if is_up(s)}
+    idle = {name for name, s in observed.items() if is_idle(s)}
     if not running:
+        if idle and idle == set(defined):
+            return "idle"
         return "down" if ever_ran else "never"
 
-    if running != set(defined):
+    if running | idle != set(defined):
         return "degraded"
 
     # health is None for the many images that define no healthcheck; absence
     # of a check is not a failed check.
     unhealthy = [s for s in observed.values()
-                 if s["health"] is not None and s["health"] != "healthy"]
+                 if not is_idle(s)
+                 and s["health"] is not None and s["health"] != "healthy"]
     return "degraded" if unhealthy else "up"
 
 
@@ -230,7 +244,8 @@ def observe_services(project):
              "{{index .Config.Labels \"com.docker.compose.service\"}}\t"
              "{{.State.Status}}\t{{.State.Running}}\t{{.RestartCount}}\t"
              "{{.Config.Image}}\t"
-             "{{if .State.Health}}{{.State.Health.Status}}{{end}}", *ids],
+             "{{if .State.Health}}{{.State.Health.Status}}{{end}}\t"
+             "{{index .Config.Labels \"sablier.enable\"}}", *ids],
             capture_output=True, text=True, timeout=DOCKER_TIMEOUT,
         )
     except subprocess.TimeoutExpired:
@@ -240,7 +255,7 @@ def observe_services(project):
 
     services = {}
     for line in detail.stdout.rstrip("\n").splitlines():
-        name, state, running, restarts, image, health = line.split("\t")
+        name, state, running, restarts, image, health, sablier = line.split("\t")
         services[name] = {
             # .State.Status, not just .State.Running: a crash-looping
             # container reports Running=true between restart attempts, so
@@ -252,6 +267,7 @@ def observe_services(project):
             "restarts": int(restarts),
             "image": image,
             "health": health or None,
+            "sablier": sablier == "true",
         }
     return services
 

@@ -1,0 +1,90 @@
+# Swap for a Docker VM, in two tiers: zram first, a swapfile behind it.
+# Neither saves RAM. Together they turn an out-of-memory kill into slowdown.
+# Why and when: docs/resource-savings.md.
+#
+#   cd ansible
+#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" swap.yml --check --diff   # dry run
+#   ansible-playbook -i "$SITE_DIR/ansible/inventory.yml" swap.yml
+#
+# Prove it on harden-test first:  -e swap_hosts=harden-test  with its inventory.
+#
+# Undo: swapoff -a; rm /etc/systemd/zram-generator.conf /swapfile, drop the
+# /swapfile line from /etc/fstab and /etc/sysctl.d/90-swap.conf, reboot.
+
+- name: zram and a swapfile inside each VM
+  hosts: "{{ swap_hosts | default('docker_vms') }}"
+  become: true
+  vars:
+    # Uncompressed ceiling. At ~3:1 zstd, half of RAM costs about a sixth of
+    # it when full, and nothing when empty.
+    zram_size: ram / 2
+    swapfile_size: 4G
+  tasks:
+    # Priority 100 against the swapfile's 10: the kernel fills zram first.
+    - name: zram config
+      ansible.builtin.copy:
+        dest: /etc/systemd/zram-generator.conf
+        mode: "0644"
+        content: |
+          [zram0]
+          zram-size = {{ zram_size }}
+          compression-algorithm = zstd
+          swap-priority = 100
+      register: zram_conf
+
+    # After the config: installing starts the device at once, with the
+    # package's default size (min(ram / 2, 4096) MB) if ours is not there yet.
+    - name: zram generator
+      ansible.builtin.apt:
+        name: systemd-zram-generator
+        update_cache: true
+        cache_valid_time: 3600
+
+    # Started, never restarted: a restart is a swapoff, which on a loaded
+    # host pushes everything in zram back into RAM at once.
+    - name: zram device up
+      ansible.builtin.systemd:
+        name: systemd-zram-setup@zram0.service
+        state: started
+        daemon_reload: "{{ zram_conf.changed }}"
+
+    - name: Swapfile exists
+      ansible.builtin.stat:
+        path: /swapfile
+      register: swapfile
+
+    - name: Swapfile created
+      when: not swapfile.stat.exists
+      ansible.builtin.shell: |
+        set -euo pipefail
+        fallocate -l {{ swapfile_size }} /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+      args:
+        executable: /bin/bash
+
+    - name: Swapfile in fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^/swapfile\s'
+        line: /swapfile none swap sw,pri=10 0 0
+
+    - name: Swap on
+      ansible.builtin.command: swapon -a
+      changed_when: false
+
+    # page-cluster 0: zram has no seek cost, so read one page, not eight.
+    # swappiness 100: anonymous pages and page cache weighed equally, since
+    # swapping to zram is cheaper than re-reading cache from disk.
+    - name: Swap sysctls
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/90-swap.conf
+        mode: "0644"
+        content: |
+          vm.swappiness = 100
+          vm.page-cluster = 0
+      register: swap_sysctl
+
+    - name: Swap sysctls applied
+      when: swap_sysctl.changed
+      ansible.builtin.command: sysctl -p /etc/sysctl.d/90-swap.conf

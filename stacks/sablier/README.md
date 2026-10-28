@@ -18,8 +18,9 @@ hold a gigabyte. Stopped, they hold nothing. What it has saved so far:
 3. Its container name in the socket proxy's `-allowPOST` pattern in this
    stack's `compose.yaml`. Without that, Sablier gets a 403 and the waiting
    page never ends.
-4. Pause or delete its Uptime Kuma monitor: a stopped container reads as an
-   outage there.
+4. Delete its Uptime Kuma monitor: a stopped container reads as an outage
+   there. `check_monitors.py` stops asking for one once the label is set, and
+   `status.py` reports the stack `idle`, not `down`.
 
 ## Notes
 

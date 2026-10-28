@@ -20,7 +20,8 @@ a wait on the first request is acceptable. Browsers get a waiting page
 which holds the request until the container is up. Does not fit anything
 reached without Caddy: phone sync over another port, webhooks, SMB,
 schedules, or another container calling it. A stopped container reads as
-down to Uptime Kuma, so its monitor goes. How to add one:
+down to Uptime Kuma, so its monitor goes; `status.py` reports it `idle`
+rather than `down`, and `check_monitors.py` skips it. How to add one:
 `stacks/sablier/README.md`.
 
 **Cap a runtime's heap.** For JVM and similar apps with no limit set, which
@@ -35,7 +36,7 @@ set it from observed peak use plus margin, and watch for restarts after.
 **Swap: zram first, then a swapfile.** Neither reduces use. zram at high
 priority absorbs overflow in compressed RAM; a small swapfile at lower
 priority catches what zram cannot. Together they turn an out-of-memory kill
-into slowdown.
+into slowdown. `ansible/swap.yml` sets both up; prove it on `harden-test` first.
 
 **Remove what is not used.** The cheapest saving, but check its size first:
 a static web app may hold a few MiB. Check every consumer before calling
