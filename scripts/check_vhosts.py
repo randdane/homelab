@@ -141,6 +141,7 @@ PUBLIC_HOSTS = {
 PHONE_PROBES = (
     "authentik.{$PUBLIC_DOMAIN}",
     "beszel.{$PUBLIC_DOMAIN}",
+    "bitskit.{$PUBLIC_DOMAIN}",
     "forgejo.{$PUBLIC_DOMAIN}",
     "grocy.{$PUBLIC_DOMAIN}",
     "homepage.{$PUBLIC_DOMAIN}",

@@ -1,0 +1,48 @@
+name: bitskit
+
+x-homelab:
+  lifecycle: developing
+  host: always-on
+  exposure: lan
+  data: none
+  purpose: Self-hosted dev toolbox (Rust/WASM rewrite of it-tools + omni-tools)
+  prerequisites: PUBLIC_DOMAIN and BITSKIT_TAG in .env; image loaded with deploy.sh
+  description: Stateless; every tool runs in the browser, the server only serves static files
+
+services:
+  bitskit:
+    # Built on the laptop from the bitskit repo and copied over by deploy.sh;
+    # there is no registry, so never pull.
+    image: bitskit:${BITSKIT_TAG:?set BITSKIT_TAG in .env}
+    pull_policy: never
+    container_name: bitskit
+    restart: unless-stopped
+    # Loopback only: the vhost is the way in, this is break-glass over ssh.
+    ports:
+      - "127.0.0.1:${PORT:-8098}:8080"
+    networks:
+      - default
+      - edge
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    deploy:
+      resources:
+        limits: { memory: 32M, cpus: "0.25" }
+    labels:
+      homepage.group: Ops
+      homepage.name: bitskit
+      homepage.description: ~140 encoders, converters and generators, all in the browser
+      homepage.href: https://bitskit.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      homepage.icon: mdi-toolbox
+    # The image is FROM scratch: no shell, no curl. The binary checks itself.
+    healthcheck:
+      test: ["CMD", "/bitskit", "--healthcheck"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+networks:
+  edge:
+    external: true
