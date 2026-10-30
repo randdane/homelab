@@ -158,9 +158,51 @@ services:
       # is marked healthy the moment a probe passes, however early that is.
       start_period: 180s
 
+  # The Rust replacement for n8n, in shadow: it posts to its own topic, which
+  # nothing subscribes to, so the phone does not get everything twice. README,
+  # "Side-by-side with n8n".
+  reminders:
+    # Built on the laptop and copied over by reminders-deploy.sh; there is no
+    # registry, so never pull.
+    image: life-queue-reminders:${REMINDERS_TAG:?set REMINDERS_TAG in .env -- see reminders-deploy.sh}
+    pull_policy: never
+    container_name: life-queue-reminders
+    restart: unless-stopped
+    environment:
+      VIKUNJA_INTERNAL_URL: http://vikunja:3456
+      VIKUNJA_PUBLIC_URL: ${VIKUNJA_PUBLIC_URL:?set VIKUNJA_PUBLIC_URL in .env}
+      VIKUNJA_TOKEN: ${VIKUNJA_TOKEN:-}
+      NTFY_URL: http://ntfy:80
+      NTFY_TOPIC: life-queue-shadow
+      NTFY_TOKEN: ${REMINDERS_NTFY_TOKEN:?set REMINDERS_NTFY_TOKEN in .env}
+      TZ: ${TZ:-America/Chicago}
+    # default for vikunja:3456; edge for ntfy:80. No published port.
+    networks:
+      - default
+      - edge
+    volumes:
+      # What has been announced, and messages not yet accepted by ntfy.
+      - reminders-data:/data
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    deploy:
+      resources:
+        limits: { memory: 32M, cpus: "0.25" }
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+    # The image is FROM scratch: no shell, no curl. The binary checks itself.
+    healthcheck:
+      test: ["CMD", "/life-queue-reminders", "--healthcheck"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
 volumes:
   vikunja-data:
   n8n-data:
+  reminders-data:
 
 networks:
   # Shared with stacks/caddy. Created out-of-band:  see docs/host-setup.md 11 (it needs an explicit subnet)

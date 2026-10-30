@@ -54,6 +54,9 @@ The access table is the audit. It must match this, exactly:
 | `hass` | write | read |
 | `phone` | read | write |
 
+Plus `reminders-shadow`, write-only on `life-queue-shadow`, while the reminders
+service runs beside n8n (`stacks/life-queue/README.md`). Remove it at cutover.
+
 ```bash
 docker exec ntfy ntfy access
 ```

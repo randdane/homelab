@@ -100,6 +100,7 @@ services:
       # notifications with nothing behind them.
       - life-queue_vikunja-data:/backup/life-queue-vikunja:ro
       - life-queue_n8n-data:/backup/life-queue-n8n:ro
+      - life-queue_reminders-data:/backup/life-queue-reminders:ro
       # Forgejo needs both: repositories live in forgejo-data, issues/users/PRs
       # in Postgres. Restoring one without the other is half an instance.
       # This is also where the Obsidian vault lives, so it is not optional.
@@ -169,6 +170,8 @@ volumes:
   life-queue_vikunja-data:
     external: true
   life-queue_n8n-data:
+    external: true
+  life-queue_reminders-data:
     external: true
   forgejo_forgejo-data:
     external: true

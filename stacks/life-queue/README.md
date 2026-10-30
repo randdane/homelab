@@ -136,6 +136,55 @@ Webhooks are registered **per project**, so a new project has no reminders
 until they are registered for it. Re-run `scripts/import.py webhooks` in the
 life-queue repo after adding one.
 
+## Side-by-side with n8n
+
+`reminders` is the Rust replacement (`life-queue-reminders`, a separate repo on
+the laptop). For a week it runs beside n8n and posts to `life-queue-shadow`,
+which nothing subscribes to. n8n still sends the phone's notifications.
+
+**Start:**
+
+```bash
+# Laptop, after pushing this directory. Builds, loads the image, creates the
+# ntfy user and token, fills .env, pulls, starts `reminders` only.
+stacks/life-queue/reminders-deploy.sh <path-to-life-queue-reminders-repo>
+
+# homelab: re-create the backup container so it mounts the new volume, then check.
+cd /opt/homelab/stacks/backup && docker compose up -d --force-recreate
+cd /opt/homelab && ~/.local/bin/uv run scripts/check_backups.py
+
+# Laptop, life-queue repo, through a tunnel to Vikunja. Dry-run first. n8n's webhook stays.
+ssh -fN -L 3456:127.0.0.1:3456 homelab
+VIKUNJA_TOKEN=... ./scripts/import.py webhooks --dry-run \
+  --target http://reminders:8080/webhook/vikunja-reminder
+```
+
+The first poll records what is already overdue and sends nothing.
+
+**Compare, any time during the week:**
+
+```bash
+ssh homelab 'cd /opt/homelab/stacks/life-queue && ~/.local/bin/uv run reminders_compare.py'
+```
+
+It pairs messages by task, within 35 minutes, and prints everything unpaired.
+Expected differences: n8n repeating a task the poll already announced, n8n's
+failed sends, and reminders the new service recovered. Anything else is a bug.
+Do not recreate the container during the week: its log is the record.
+`docker compose stop` and the nightly backup stop are fine.
+
+**Stop:** `reminders_webhooks.py --remove` (lists without the flag), then
+revert the commit, pull, and `docker compose up -d --remove-orphans` here.
+Remove the same volume from the backup stack, and the `reminders-shadow` user
+from ntfy.
+
+**Cutting over, after a clean week:** point `reminders` at `env_file:
+../ntfy/.env`, drop `NTFY_TOPIC` and `REMINDERS_NTFY_TOKEN`, remove n8n and its webhooks,
+change the default `--target` in `import.py`, and add an Uptime Kuma monitor.
+
+**Not covered yet:** no Kuma monitor during the week; `status.py` sees the stack,
+not this one service.
+
 ## Gotchas
 
 - **`outgoingrequests.allownonroutableips: true`** in `config/config.yaml` is
