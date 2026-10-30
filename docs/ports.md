@@ -16,7 +16,6 @@ they reserve nothing.
 443:443/udp caddy
 127.0.0.1:445:445 paperless-samba
 127.0.0.1:2283:2283 immich-server
-127.0.0.1:2377:2375 beszel-socket-proxy
 2586:80 ntfy
 127.0.0.1:3001:3000 homepage
 127.0.0.1:3002:3000 forgejo

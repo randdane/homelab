@@ -51,33 +51,32 @@ services:
     # a container holding it can still create a privileged container that
     # bind-mounts /, which is host root. This proxy is what actually
     # restricts it. See docs/lessons-learned.md §27.
-    image: tecnativa/docker-socket-proxy:v0.5.0
+    image: wollomatic/socket-proxy:1.13.1
     container_name: dozzle-socket-proxy
     restart: unless-stopped
-    environment:
-      # The setting that makes this read-only.
-      - POST=0
-      # Measured 2026-09-03: container list, inspect, logs, events, info, version.
-      - CONTAINERS=1
-      - EVENTS=1
-      - INFO=1
-      - VERSION=1
-      # Explicitly denied. Each of these grants host takeover on its own,
-      # and some have GET forms that POST=0 would not stop.
-      - EXEC=0
-      - SECRETS=0
-      - CONFIGS=0
-      - SWARM=0
-      - NODES=0
-      - PLUGINS=0
-      - SYSTEM=0
-      - AUTH=0
-      - BUILD=0
-      - COMMIT=0
-      - DISTRIBUTION=0
-      - SESSION=0
+    # Runs as nobody; the socket is root:docker 0660, so it needs the
+    # host's docker group. Host-specific, hence .env.
+    user: "65534:${DOCKER_GID:?set DOCKER_GID in this stack's .env -- getent group docker}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - -listenip=0.0.0.0
+      - -allowfrom=dozzle
+      - -allowhealthcheck
+      - -watchdoginterval=3600
+      - -stoponwatchdog
+      # Every other method is refused. The same paths tecnativa allowed here,
+      # counting its defaults (EVENTS, PING, VERSION). Patterns are anchored.
+      - -allowGET=(/v[0-9.]+)?/(containers(/.*)?|events|info|version|_ping)
+      - -allowHEAD=(/v[0-9.]+)?/(containers(/.*)?|events|info|version|_ping)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "/healthcheck"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
     # No ports: reachable only from inside this stack's network.
 
 networks:

@@ -24,12 +24,11 @@ hold a gigabyte. Stopped, they hold nothing. What it has saved so far:
 
 ## Notes
 
-**The socket proxy is wollomatic, not the tecnativa proxy the other stacks
-use.** Sablier has to POST start and stop. Tecnativa can only allow POST in
-general, and with `CONTAINERS=1` that includes `POST /containers/create`,
-which is host root. Wollomatic matches each method against a regex, so POST
-here is limited to start, stop and wait on the named containers. GET is still
-open to every container's details, the same as the other proxies.
+**The socket proxy allows POST, unlike the read-only proxies in other stacks.**
+Sablier has to POST start and stop. Wollomatic matches each method against a
+regex, so POST here is limited to start, stop and wait on the named containers;
+`POST /containers/create` would be host root. GET is still open to every
+container's details, the same as the other proxies.
 
 **What it can still do if compromised:** start or stop the containers named
 in `-allowPOST`, and read every container's config through GET (environment

@@ -43,11 +43,9 @@ services:
       start_period: 10s
 
   socket-proxy:
-    # wollomatic, not tecnativa like the other stacks. Sablier needs POST
-    # start/stop, and tecnativa can only grant POST as a whole: POST=1 with
-    # CONTAINERS=1 also allows POST /containers/create, and a privileged
-    # container that bind-mounts / is host root. wollomatic takes a regex per
-    # method, so POST is limited to start/stop/wait on the managed containers.
+    # The one proxy that allows POST. wollomatic takes a regex per method, so
+    # POST is limited to start/stop/wait on the managed containers; POST
+    # /containers/create would be host root (a privileged container mounting /).
     image: wollomatic/socket-proxy:1.13.1
     container_name: sablier-socket-proxy
     restart: unless-stopped

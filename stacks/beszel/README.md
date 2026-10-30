@@ -20,8 +20,9 @@ learning only): one small hub instead of five containers and gigabytes.
 | `pve` | the agent binary as a systemd service | outbound WebSocket to the vhost (`HUB_URL` + `TOKEN`) — no listening port |
 
 The `homelab` agent reads Docker through `beszel-socket-proxy`
-(`CONTAINERS`, `VERSION`, `POST=0`), published on `127.0.0.1:2377` because a
-host-network container cannot resolve container names.
+(GET and HEAD on containers, events, info, version and `_ping`), which shares
+the host network and listens on `127.0.0.1:2377` with `-allowfrom=127.0.0.1/32`,
+because a host-network container cannot resolve container names.
 
 ## `pve` agent
 

@@ -19,6 +19,10 @@ queries registries, so nothing is lost by denying it everything else, and the
 proxy is what enforces that: `:ro` on the socket restricts the file, never the
 API. See `docs/lessons-learned.md` §27.
 
+Cup calls `/services` once at startup and is refused on purpose: it is a Swarm
+endpoint and this is not a Swarm. Cup takes the 403 and carries on, so one such
+line in the proxy log is expected; anything else there is not.
+
 **Cup reports; nothing acts on its own.** With a git-managed repo the update
 path is: Cup reports, you bump a pinned tag, commit, `docker compose up -d`.
 

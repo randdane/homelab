@@ -14,7 +14,7 @@ failure this repo exists to stop. Dozzle now reads Docker over this stack's
 socket proxy, via `DOCKER_HOST=tcp://socket-proxy:2375`.
 
 **The proxy bounds takeover, not disclosure.** It denies every write and every
-host-root endpoint, but `CONTAINERS=1` is what Dozzle needs, and that alone
+host-root endpoint, but GET on containers is what Dozzle needs, and that alone
 lets anything reaching it enumerate every container and read its logs,
 environment and labels. Keep this `exposure: lan` and never put it behind a
 public hostname. See `docs/lessons-learned.md` §27.
