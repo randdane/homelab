@@ -7,7 +7,7 @@ x-homelab:
   data: precious
   purpose: Scanned documents, OCR'd and searchable -- the paper filing cabinet
   prerequisites: PAPERLESS_DB_PASSWORD, PAPERLESS_SECRET_KEY and PUBLIC_DOMAIN in .env
-  description: paperless-ngx with Postgres, Redis, Tika and Gotenberg for Office documents
+  description: paperless-ngx with Postgres and Redis; PDFs and images only, no Office or email ingestion
 
 services:
   broker:
@@ -50,10 +50,6 @@ services:
         condition: service_healthy
       broker:
         condition: service_healthy
-      gotenberg:
-        condition: service_started
-      tika:
-        condition: service_started
     environment:
       - PAPERLESS_TIME_ZONE=${TZ:-America/Chicago}
       - PAPERLESS_REDIS=redis://broker:6379
@@ -77,9 +73,6 @@ services:
       # yourself (Profile -> Connect, README).
       - PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS=false
       - PAPERLESS_OCR_LANGUAGE=${PAPERLESS_OCR_LANGUAGE:-eng}
-      - PAPERLESS_TIKA_ENABLED=1
-      - PAPERLESS_TIKA_GOTENBERG_ENDPOINT=http://gotenberg:3000
-      - PAPERLESS_TIKA_ENDPOINT=http://tika:9998
       - USERMAP_UID=${PUID:-1000}
       - USERMAP_GID=${PGID:-1000}
     # Loopback only: the vhost is the way in, this is break-glass over ssh.
@@ -103,23 +96,6 @@ services:
       homepage.icon: paperless
       docker-volume-backup.stop-during-backup: "true"
     # No healthcheck block: the image already ships one.
-
-  gotenberg:
-    image: gotenberg/gotenberg:8.20
-    container_name: paperless-gotenberg
-    restart: unless-stopped
-    # Converts .eml files via headless Chromium. JavaScript off and the file
-    # allow-list narrowed, so a malicious document cannot phone home or read
-    # the rest of the container.
-    command:
-      - "gotenberg"
-      - "--chromium-disable-javascript=true"
-      - "--chromium-allow-list=file:///tmp/.*"
-
-  tika:
-    image: apache/tika:latest
-    container_name: paperless-tika
-    restart: unless-stopped
 
   # Scan-to-SMB for the Raven scanner: one share, `scans`, which is the
   # consume folder. Only the scanner's address gets in (here and in

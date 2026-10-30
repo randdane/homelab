@@ -1,7 +1,9 @@
 # Paperless-ngx
 
 **What:** Scan paper in, get an OCR'd, tagged, full-text-searchable archive.
-Tika and Gotenberg add Office and email documents.
+PDFs and images only: Tika and Gotenberg, which add Office and email documents,
+were removed to save about 260 MiB. To ingest those again, restore both services
+and the `PAPERLESS_TIKA_*` settings from git history.
 **Why I care:** The paper it replaces is often the only copy — and the reason
 to keep paper at all is being able to find it.
 **URL:** `https://paperless.<PUBLIC_DOMAIN>` (gated vhost: LAN and tailnet).
@@ -33,9 +35,6 @@ queue).
 **`data` and `media` are both backed up, plus Postgres.** `media` holds the
 document originals; `data` holds the search index and thumbnails; Postgres
 holds tags, correspondents, and metadata. All three are needed together.
-
-**Tika is unpinned (`:latest`)** because it is a stateless conversion sidecar
-with no on-disk format to migrate. Everything with state here is pinned.
 
 ## SSO (Authentik, native OIDC)
 
