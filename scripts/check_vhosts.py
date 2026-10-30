@@ -141,7 +141,6 @@ PUBLIC_HOSTS = {
 PHONE_PROBES = (
     "authentik.{$PUBLIC_DOMAIN}",
     "beszel.{$PUBLIC_DOMAIN}",
-    "bitskit.{$PUBLIC_DOMAIN}",
     "forgejo.{$PUBLIC_DOMAIN}",
     "grocy.{$PUBLIC_DOMAIN}",
     "homepage.{$PUBLIC_DOMAIN}",
@@ -198,6 +197,9 @@ def wildcard_fallback_problem(text):
 # Listing a host here is a decision that nobody gets told when it breaks from
 # off-LAN -- so it needs a reason, the same way PUBLIC_HOSTS does.
 NOT_PHONE_PROBED = {
+    "bitskit.{$PUBLIC_DOMAIN}":
+        "a stateless desk tool, not used from the phone; Uptime Kuma "
+        "watches /healthz over edge",
     "hass.{$PUBLIC_DOMAIN}":
         "the Home Assistant app on the phone shows its own connection "
         "state, which is a better probe than a Tasker request",
