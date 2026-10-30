@@ -36,3 +36,11 @@ run `docker compose up -d`.
 - **`docker image prune -a`** deletes old tags, and with them the rollback.
 
 Stateless: no volumes, nothing to back up.
+
+## Measured 2026-10-29 (image `a19c97f`)
+
+- Image 18.5 MB, idle RAM 488 KiB (limit 32 MB), WASM 967 KB over the wire (brotli)
+- `tests/smoke.mjs` (138 pages) and `tests/media.mjs` in the bitskit repo pass
+  against the vhost, with no console or CSP errors
+- Unknown names on the wildcard still abort. Uptime Kuma watches
+  `http://bitskit:8080/healthz`. Not phone-probed (see `check_vhosts.py`)
