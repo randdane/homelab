@@ -966,6 +966,26 @@ def netalertx_minutes_since_seen():
         return None
 
 
+def netalertr_problem():
+    """netalertr's own --healthcheck, which needs no token here: None when healthy.
+
+    It prints one reason line and exits non-zero on anything but 200. No output
+    at all means the exec itself failed, so the container could not be asked.
+    """
+    try:
+        out = subprocess.run(
+            ["docker", "exec", "netalertr", "/netalertr", "--healthcheck"],
+            capture_output=True, text=True, timeout=DOCKER_TIMEOUT)
+    except (subprocess.SubprocessError, OSError):
+        return "netalertr: could not ask its health -- docker logs netalertr"
+    if out.returncode == 0:
+        return None
+    reason = out.stdout.strip()
+    if not reason:
+        return "netalertr: could not ask its health -- docker logs netalertr"
+    return f"netalertr: {reason} -- docker logs netalertr"
+
+
 def describe_failure(row):
     """One line per failing stack, naming the service that is actually wrong.
 
@@ -1151,6 +1171,11 @@ def problems_for(rows, state):
         stale = netalertx_stale_problem(netalertx_minutes_since_seen())
         if stale:
             problems.append(stale)
+
+    if has_run_here(state, "netalertr"):
+        degraded = netalertr_problem()
+        if degraded:
+            problems.append(degraded)
 
     return problems
 

@@ -1,0 +1,55 @@
+name: netalertr
+
+x-homelab:
+  lifecycle: developing
+  host: always-on
+  exposure: lan
+  data: replaceable
+  purpose: Alerts on each new device MAC seen by the router, and answers agents over a read-only API
+  prerequisites: >-
+    Built on the laptop and copied by netalertr-deploy.sh, which also fills .env; the
+    image is not in a registry. The UniFi key must be the view-only one.
+  description: Small Rust service replacing NetAlertX; polls the router, alerts through ntfy
+
+services:
+  netalertr:
+    # Built on the laptop and copied over by netalertr-deploy.sh; no registry, so never pull.
+    image: netalertr:${NETALERTR_TAG:?set NETALERTR_TAG in .env -- see netalertr-deploy.sh}
+    pull_policy: never
+    container_name: netalertr
+    restart: unless-stopped
+    environment:
+      UNIFI_URL: ${UNIFI_URL:?set UNIFI_URL in .env}
+      UNIFI_API_KEY: ${UNIFI_API_KEY:?set UNIFI_API_KEY in .env}
+      NTFY_URL: ${NTFY_URL:?set NTFY_URL in .env}
+      NTFY_TOPIC: ${NTFY_TOPIC:?set NTFY_TOPIC in .env}
+      NTFY_TOKEN: ${NTFY_TOKEN:?set NTFY_TOKEN in .env}
+      API_TOKEN: ${API_TOKEN:?set API_TOKEN in .env}
+    # edge only: Caddy and ntfy are reached by container name. No published port.
+    networks:
+      - edge
+    volumes:
+      # The known-MAC list, event log and unsent alerts.
+      - data:/data
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    deploy:
+      resources:
+        limits: { memory: 32M, cpus: "0.25" }
+    labels:
+      docker-volume-backup.stop-during-backup: "true"
+    # The image is FROM scratch: no shell, no curl. The binary checks itself.
+    healthcheck:
+      test: ["CMD", "/netalertr", "--healthcheck"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  data:
+
+networks:
+  edge:
+    external: true

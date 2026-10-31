@@ -1400,6 +1400,28 @@ def test_netalertx_unreadable_is_a_problem():
     assert status.netalertx_stale_problem(None) is not None
 
 
+# --- netalertr_problem ------------------------------------------------------
+
+def test_netalertr_healthy_is_not_a_problem():
+    import unittest.mock as mock
+    with mock.patch("subprocess.run", return_value=mock.Mock(returncode=0, stdout="ok\n")):
+        assert status.netalertr_problem() is None
+
+
+def test_netalertr_degraded_reports_the_printed_reason():
+    import unittest.mock as mock
+    with mock.patch("subprocess.run", return_value=mock.Mock(returncode=1, stdout="stale\n")):
+        assert "stale" in status.netalertr_problem()
+
+
+def test_netalertr_failed_exec_says_it_could_not_ask():
+    import unittest.mock as mock
+    with mock.patch("subprocess.run", return_value=mock.Mock(returncode=1, stdout="")):
+        assert "could not ask" in status.netalertr_problem()
+    with mock.patch("subprocess.run", side_effect=subprocess.TimeoutExpired("docker", 1)):
+        assert "could not ask" in status.netalertr_problem()
+
+
 def test_rewritten_requests_finds_only_the_gateway():
     gw = "192.0.2.1"
     lines = [

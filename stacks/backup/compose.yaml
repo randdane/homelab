@@ -124,6 +124,8 @@ services:
       # NetAlertX: the known-device list. Replaceable, but a restore beats a
       # fresh 24 h baseline. Holds the UniFi key -- see stacks/netalertx/README.md.
       - netalertx_data:/backup/netalertx:ro
+      # netalertr: known MACs, event log and unsent alerts. Holds no secret.
+      - netalertr_data:/backup/netalertr:ro
       # Beszel: users, systems, alert rules and metric history.
       - beszel_data:/backup/beszel:ro
       # arr: configs only -- indexers, API keys, quality profiles, requests.
@@ -248,6 +250,8 @@ volumes:
   duplicati_config:
     external: true
   netalertx_data:
+    external: true
+  netalertr_data:
     external: true
   #n8n_data:
   #  external: true

@@ -197,6 +197,8 @@ def wildcard_fallback_problem(text):
 # Listing a host here is a decision that nobody gets told when it breaks from
 # off-LAN -- so it needs a reason, the same way PUBLIC_HOSTS does.
 NOT_PHONE_PROBED = {
+    "netalertr.{$PUBLIC_DOMAIN}":
+        "an agent API, not used from the phone",
     "bitskit.{$PUBLIC_DOMAIN}":
         "a stateless desk tool, not used from the phone; Uptime Kuma "
         "watches /healthz over edge",
