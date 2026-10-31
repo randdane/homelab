@@ -105,7 +105,7 @@ def read_own_mac():
     return m[1].lower() if m else None
 
 
-def analyse(state, rows, own_mac):
+def analyse(state, rows, own_mac, excused=frozenset()):
     """Findings as plain data; each list is one report section."""
     known = set(state["known"])
     events = state["events"]
@@ -117,7 +117,8 @@ def analyse(state, rows, own_mac):
     return {
         "na_count": len(rows),
         "no_first_time": sum(1 for _, t in rows if t is None),
-        "missing": sorted(na_macs - known - {own_mac}),
+        "missing": sorted(na_macs - known - {own_mac} - excused),
+        "excused_hardware": sorted((na_macs - known) & excused),
         "own_excused": own_mac is not None and own_mac in na_macs - known,
         "added_without_new": sorted(m for m, t in rows
                                     if seeded_at is not None and t is not None and t > seeded_at
@@ -154,6 +155,8 @@ def report(f):
         say(f"missing from netalertr: {m}", True)
     if f["own_excused"]:
         say("excused: NetAlertX's own interface MAC is not in netalertr")
+    for m in f["excused_hardware"]:
+        say(f"excused: network hardware, not a client: {m}")
     for m in f["added_without_new"]:
         say(f"added to NetAlertX after the seed, no new event here: {m}", True)
     for m in f["new_unknown_to_na"]:
@@ -237,6 +240,13 @@ def self_test():
         # Placeholders fail until filled in.
         EXPECTED_NETWORKS = keep
         assert report(analyse(clean, [("02:00:00:00:00:01", 5), ("02:00:00:00:00:02", 5)], None))[1]
+        # Excused network hardware is named, not failed; only the listed MAC is excused.
+        EXPECTED_NETWORKS = {"lan", "iot"}
+        two = [("02:00:00:00:00:01", 5), ("02:00:00:00:00:02", 5)]
+        lines, fail = report(analyse(clean, [*two, ("02:00:00:00:00:08", 5)], None, {"02:00:00:00:00:08"}))
+        assert not fail and any("network hardware" in x and "02:00:00:00:00:08" in x for x in lines), lines
+        lines, fail = report(analyse(clean, [*two, ("02:00:00:00:00:09", 5)], None, {"02:00:00:00:00:08"}))
+        assert fail and not any("network hardware" in x for x in lines), lines
         # Expected names come from the .env; absent means placeholders stay.
         with tempfile.TemporaryDirectory() as d:
             e = Path(d) / ".env"
@@ -268,13 +278,23 @@ def read_expected_networks(env_file):
     return {n.strip() for n in m[1].split(",") if n.strip()} if m else None
 
 
+def read_excused_macs(env_file):
+    """UniFi hardware that NetAlertX lists and the client lists do not."""
+    try:
+        m = re.search(r"^NETALERTR_EXCUSED_MACS=(.+)$", Path(env_file).read_text(), re.M)
+    except OSError:
+        return set()
+    return {n.strip().lower() for n in m[1].split(",") if n.strip()} if m else set()
+
+
 def main():
     global EXPECTED_NETWORKS
     if "--self-test" in sys.argv:
         return self_test()
     EXPECTED_NETWORKS = read_expected_networks(Path(__file__).resolve().parent / ".env") or EXPECTED_NETWORKS
     state = read_state()
-    lines, fail = report(analyse(state, read_netalertx(), read_own_mac()))
+    excused = read_excused_macs(Path(__file__).resolve().parent / ".env")
+    lines, fail = report(analyse(state, read_netalertx(), read_own_mac(), excused))
     print("\n".join(lines))
     sys.exit(1 if fail else 0)
 
