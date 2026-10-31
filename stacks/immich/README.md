@@ -99,7 +99,7 @@ recreate them (below), or the server exits at start.
 as the database it restores, never older. Extra files are harmless; missing
 ones are broken assets. Photos are written once and never changed, so this is
 a matter of ordering, not snapshots. Immich's automatic DB dump runs at
-02:00. The backup timer (~03:00) archives the database volume, then runs
+02:00. The backup timer (03:05 to 03:15) archives the database volume, then runs
 Duplicati, which reads the photos afterwards. So every DB dump in B2 sits in
 the same Duplicati version as a file set taken after it.
 

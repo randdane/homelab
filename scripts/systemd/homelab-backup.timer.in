@@ -2,8 +2,11 @@
 Description=Run the nightly backup chain
 
 [Timer]
-OnCalendar=03:00
-# The whole point. The first server is a laptop and is often powered off at 03:00 --
+# 03:05, not 03:00: Immich's integrity job starts at 03:00 and takes about
+# 2.5 min. Stopping its Postgres mid-job crashes immich-server (2026-10-18 and
+# 2026-10-30, both when the delay landed in the first minute).
+OnCalendar=03:05
+# The whole point. The first server is a laptop and is often powered off at this hour --
 # container cron simply lost those runs and reported nothing. Persistent
 # makes a missed run fire after the next boot instead.
 Persistent=true

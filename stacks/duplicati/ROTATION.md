@@ -97,7 +97,7 @@ younger than a week. That is why this runbook never purges a bucket.
 ## Before any rotation
 
 Run on `homelab`, from the stack directory. Stay clear of the nightly run at
-03:00 (`homelab-backup.timer`): it stops and restarts Duplicati for the local
+03:05 to 03:15 (`homelab-backup.timer`): it stops and restarts Duplicati for the local
 archive, then runs both jobs.
 
 ```sh
