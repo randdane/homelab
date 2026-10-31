@@ -48,7 +48,7 @@ already in `.env`.
 
 - The compare fails until `NETALERTR_EXPECTED_NETWORKS` in `.env` holds the four
   network names the controller reports.
-- The Kuma bearer-header monitor, and the memory figure on the host.
+- The memory figure on the host.
 
 ## Compare
 
