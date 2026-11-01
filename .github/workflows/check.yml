@@ -70,6 +70,6 @@ jobs:
       # The .env files are gitignored, so this runner has none. That is the
       # point: check.sh renders declared defaults and stubs server-only
       # secrets, so it must pass with no per-stack secrets present at all.
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - run: ./scripts/check.sh
