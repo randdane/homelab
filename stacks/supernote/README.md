@@ -92,6 +92,20 @@ service internally, and Caddy passes the WebSocket upgrade through. Verified
   Drilled 2026-10-26 from the nightly archive: both notebooks listed and
   previewed.
 
+## Replacing it with Syncthing (on trial)
+
+**Since 2026-11-02 the tablet's `Note` folder also syncs to the Syncthing
+stack,** to find out whether this ~1 GiB stack can go. With sideloading on,
+the tablet runs Syncthing-Fork (send-only `Note`, receive-only with versioning
+on the server) and Tailscale; the Android setup is in
+`stacks/syncthing/README.md`, "Android clients". What it loses: the web portal,
+note previews, and the `Document`/`EXPORT`/`INBOX` flow, which still needs
+this stack. Previews can come from converting `.note` files on demand.
+Rejected for now: a Rust rewrite (the protocol and the `.note` renderer would
+be ours to keep compatible) and the open `allenporter/supernote` server
+(young, and firmware updates can break it), which is the fallback if the
+trial fails.
+
 ## Measured
 
 - RAM ~1.07 GiB after start (node 490 MiB, java 420 MiB, MariaDB 70 MiB,
