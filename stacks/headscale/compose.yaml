@@ -11,7 +11,7 @@ x-homelab:
 
 services:
   headscale:
-    image: headscale/headscale:v0.29.5
+    image: headscale/headscale:v0.29.7
     container_name: headscale
     restart: unless-stopped
     command: serve
