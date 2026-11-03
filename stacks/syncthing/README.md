@@ -52,6 +52,13 @@ Learned on a sideloaded e-ink tablet, 2026-11-02:
 - **Give it both addresses here as well,** LAN and tailnet. Bringing up the
   device's VPN dropped the live connection and it was not redialled until
   the device's entry was saved again.
+- **Check the tunnel after a reboot, away from home.** With Tailscale as the
+  always-on VPN, a reboot can leave Tailscale running and reachable
+  (`tailscale ping` answers) but with no tunnel interface, so no app traffic
+  goes through it. Syncthing then runs and syncs nothing off-LAN. Seen
+  2026-11-03. Toggling Tailscale off and on fixes it, or over adb:
+  `am broadcast -a com.tailscale.ipn.CONNECT_VPN -n com.tailscale.ipn/.IPNReceiver`
+  after the matching `DISCONNECT_VPN`. Test with `ip -br addr | grep tun`.
 
 ## Unverified
 
