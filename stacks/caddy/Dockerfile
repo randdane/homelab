@@ -47,7 +47,7 @@
 FROM caddy:2.11.7-builder AS builder
 
 RUN xcaddy build \
-    --with github.com/hslatman/caddy-crowdsec-bouncer/http@v0.14.1 \
+    --with github.com/hslatman/caddy-crowdsec-bouncer/http@v0.15.0 \
     --with github.com/caddy-dns/porkbun@v0.3.1 \
     --with github.com/sablierapp/sablier-caddy-plugin@v1.0.2
 
@@ -59,6 +59,6 @@ COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 LABEL org.opencontainers.image.title="caddy-crowdsec-porkbun" \
       org.opencontainers.image.description="Caddy 2.11.7 with the CrowdSec bouncer, the Porkbun DNS provider and the Sablier handler compiled in" \
       homelab.caddy.version="2.11.7" \
-      homelab.plugin.crowdsec-bouncer="v0.14.1" \
+      homelab.plugin.crowdsec-bouncer="v0.15.0" \
       homelab.plugin.porkbun="v0.3.1" \
       homelab.plugin.sablier="v1.0.2"
