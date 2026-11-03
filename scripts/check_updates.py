@@ -41,6 +41,9 @@ Cup missed 12.0 and 12.1 (September 2026) because the tags went from three
 parts to two; and once Jellyfin moves to an LXC as an apt package, Cup cannot
 see it at all. See native_jellyfin_behind().
 
+Tailscale clients are checked against TAILSCALE_MIN, read from Headscale's
+nodestore, since no image or manifest records them. See tailscale_behind().
+
 What "alerting" means here is `x-homelab.patch_priority`, falling back to
 `exposure` -- what being out of date COSTS, which is not always the same as
 who can reach the service. authentik is the case that separates them: its
@@ -56,8 +59,10 @@ not check (Cup unreachable or returned nothing usable).
 import argparse
 import json
 import re
+import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -456,7 +461,82 @@ def native_jellyfin_behind(installed, latest):
     return installed, latest
 
 
+# Raise this when a Tailscale security bulletin names a fixed version. 1.104.4:
+# Headscale v0.29.7's notes -- the Tailscale SSH fixes run in each node's own
+# tailscaled, so upgrading Headscale alone does not apply them.
+TAILSCALE_MIN = "1.104.4"
+# A node unseen this long is listed, not alerted on: it cannot be upgraded
+# until it is back, and a check that stays red for weeks gets ignored.
+TAILSCALE_STALE_DAYS = 7
+# Headscale's image is distroless, and its debug listener (where clients'
+# reported versions are; the CLI and REST API omit them) is on the container's
+# loopback, so a pinned curl joins its network namespace to read it.
+NODESTORE_CMD = ["docker", "run", "--rm", "--network", "container:headscale",
+                 "curlimages/curl:8.11.1", "-fsS", "-m", "20",
+                 "-H", "Accept: application/json",
+                 "http://127.0.0.1:9090/debug/nodestore"]
+
+
+def tailscale_behind(nodes, minimum, now, stale_days=TAILSCALE_STALE_DAYS):
+    """Split Headscale's nodestore into (behind, stale) rows of (name, version).
+
+    An unreported or unparseable version is behind, never current.
+    """
+    behind, stale = [], []
+    want = version_tuple(minimum)
+    for node in nodes.values():
+        name = node.get("GivenName") or "?"
+        reported = (node.get("Hostinfo") or {}).get("IPNVersion")
+        version = reported.split("-")[0] if reported else None
+        have = version_tuple(version)
+        if have is not None and have >= want:
+            continue
+        seen = node.get("LastSeen")
+        try:
+            age = now - datetime.fromisoformat(seen[:26].rstrip("Z") + "+00:00")
+        except (TypeError, ValueError):
+            age = None
+        too_old = (not node.get("IsOnline") and age is not None
+                   and age > timedelta(days=stale_days))
+        (stale if too_old else behind).append((name, version))
+    return behind, stale
+
+
+def read_nodestore():
+    """Headscale's nodestore as a dict, or None if it cannot be read."""
+    try:
+        out = subprocess.run(NODESTORE_CMD, capture_output=True, text=True,
+                             timeout=60, check=True).stdout
+        return json.loads(out)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return None
+
+
 def self_test():
+    # Tailscale clients: build suffix ignored, unknown is behind, and an
+    # offline node unseen for over a week is stale rather than an alert.
+    now = datetime(2026, 11, 3, tzinfo=timezone.utc)
+    nodes = {
+        "1": {"GivenName": "ok", "IsOnline": True,
+              "Hostinfo": {"IPNVersion": "1.104.4-t938213198-gb9d"}},
+        "2": {"GivenName": "old", "IsOnline": True,
+              "LastSeen": "2026-11-03T00:00:00.123456789Z",
+              "Hostinfo": {"IPNVersion": "1.102.4-tabc"}},
+        "3": {"GivenName": "silent", "IsOnline": True, "Hostinfo": {}},
+        "4": {"GivenName": "away", "IsOnline": False,
+              "LastSeen": "2026-09-18T16:18:58.615816073Z",
+              "Hostinfo": {"IPNVersion": "1.98.8-tx"}},
+        "5": {"GivenName": "napping", "IsOnline": False,
+              "LastSeen": "2026-11-02T00:00:00Z",
+              "Hostinfo": {"IPNVersion": "1.98.8-tx"}},
+        "6": {"GivenName": "newer", "IsOnline": True,
+              "Hostinfo": {"IPNVersion": "1.110.0"}},
+    }
+    behind, stale = tailscale_behind(nodes, "1.104.4", now)
+    assert behind == [("old", "1.102.4"), ("silent", None),
+                      ("napping", "1.98.8")], behind
+    assert stale == [("away", "1.98.8")], stale
+
     # Native Jellyfin: numeric, padded, and unreadable is never current.
     assert version_tuple("v12.1") == (12, 1, 0)
     assert version_tuple("10.11.11") == (10, 11, 11)
@@ -692,6 +772,23 @@ def main():
                   "bind mount rules out\n  pct snapshot), and on a major "
                   "version swap the LDAP plugin too.", file=sys.stderr)
 
+    nodestore = read_nodestore()
+    if nodestore is None:
+        ts_behind, ts_stale = [("(Headscale's nodestore unreadable)", None)], []
+    else:
+        ts_behind, ts_stale = tailscale_behind(
+            nodestore, TAILSCALE_MIN, datetime.now(timezone.utc))
+    if ts_behind:
+        print(f"Tailscale clients below {TAILSCALE_MIN} or unreadable:",
+              file=sys.stderr)
+        for name, version in ts_behind:
+            print(f"  {name}: {version or 'unknown'}", file=sys.stderr)
+        print("  Upgrade tailscale on each node; Headscale cannot do it for "
+              "them.", file=sys.stderr)
+    for name, version in ts_stale:
+        print(f"  (not alerting, offline over {TAILSCALE_STALE_DAYS} days) "
+              f"tailscale {name}: {version or 'unknown'}", file=sys.stderr)
+
     for reference, stack, _ in others if args.all else []:
         print(f"  (not alerting) {stack}: {reference}", file=sys.stderr)
 
@@ -793,6 +890,10 @@ def main():
 
     # Jellyfin is internet patch priority wherever it runs.
     if native:
+        sys.exit(1)
+
+    # The tailnet reaches every host, so its clients are internet priority too.
+    if ts_behind:
         sys.exit(1)
 
     print(f"clean: {len(updates)} images checked, "

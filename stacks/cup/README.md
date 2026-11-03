@@ -47,6 +47,11 @@ pushes the answer, on `homelab-updates.timer` (Mondays, so an update found on
 a weekday evening gets applied deliberately rather than in a hurry before a
 weekend when family is using these stacks).
 
+The same run also flags tailnet clients below `TAILSCALE_MIN` in the script,
+read from Headscale's debug nodestore; nodes offline over a week are listed
+but do not fail it. Raise the minimum when a Tailscale security bulletin
+names a fixed version.
+
 It alerts on the four stacks whose patch priority is `internet` only. Being
 behind is an *exposure* there and a chore everywhere else, and a check that
 fires on all forty stacks fires weekly, which is the same as not firing.
