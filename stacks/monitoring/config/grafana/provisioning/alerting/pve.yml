@@ -1,0 +1,172 @@
+# Alert rules for pve's host and disks (plan step 5 follow-up). Contact point
+# and policy are in alerting.yml. SMART is also watched by smartd on pve
+# (docs/smart.md); this is the second, history-backed path, not a replacement.
+# Thresholds from the first readings 2026-11-05: HDDs 43-44 C, NVMe 31 C.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: pve-disks
+    folder: Homelab
+    interval: 1m
+    rules:
+      - uid: pve-exporter-down
+        title: pve exporter not scraped
+        condition: C
+        for: 5m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.job }} on pve is not answering VictoriaMetrics, so its disk and host alerts cannot fire"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model: {refId: A, expr: 'up{job=~"pve-node|pve-smartctl"}', instant: true, range: false}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, datasource: {type: __expr__, uid: __expr__}}
+          - refId: C
+            datasourceUid: __expr__
+            model: {refId: C, type: math, expression: "$B == 0", datasource: {type: __expr__, uid: __expr__}}
+      - uid: smart-failed
+        title: SMART health failed
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Alerting
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.device }} on pve reports SMART overall health FAILED"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model: {refId: A, expr: 'smartctl_device_smart_status', instant: true, range: false}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, datasource: {type: __expr__, uid: __expr__}}
+          - refId: C
+            datasourceUid: __expr__
+            model: {refId: C, type: math, expression: "$B == 0", datasource: {type: __expr__, uid: __expr__}}
+      - uid: smart-devices-missing
+        title: SMART disk missing
+        condition: C
+        for: 10m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: {severity: critical}
+        annotations:
+          summary: "fewer than 3 disks report SMART on pve: one has dropped out, or the exporter cannot read it"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model: {refId: A, expr: 'count(smartctl_device_smart_status)', instant: true, range: false}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, datasource: {type: __expr__, uid: __expr__}}
+          - refId: C
+            datasourceUid: __expr__
+            model: {refId: C, type: math, expression: "$B < 3", datasource: {type: __expr__, uid: __expr__}}
+      - uid: zfs-pool-not-online
+        title: ZFS pool not online
+        condition: C
+        for: 0s
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: {severity: critical}
+        annotations:
+          summary: "zpool {{ $labels.zpool }} on pve is not ONLINE (degraded, faulted or resilvering)"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model: {refId: A, expr: 'node_zfs_zpool_state{state="online"}', instant: true, range: false}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, datasource: {type: __expr__, uid: __expr__}}
+          - refId: C
+            datasourceUid: __expr__
+            model: {refId: C, type: math, expression: "$B == 0", datasource: {type: __expr__, uid: __expr__}}
+      - uid: hdd-hot
+        title: HDD hot
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Alerting
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.device }} on pve is above 55 C (normal 43-44 C)"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model: {refId: A, expr: 'smartctl_device_temperature{temperature_type="current",device=~"sd.*"}', instant: true, range: false}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, datasource: {type: __expr__, uid: __expr__}}
+          - refId: C
+            datasourceUid: __expr__
+            model: {refId: C, type: math, expression: "$B > 55", datasource: {type: __expr__, uid: __expr__}}
+      - uid: nvme-hot
+        title: NVMe hot
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Alerting
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.device }} on pve is above 70 C (normal about 31 C)"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model: {refId: A, expr: 'smartctl_device_temperature{temperature_type="current",device=~"nvme.*"}', instant: true, range: false}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, datasource: {type: __expr__, uid: __expr__}}
+          - refId: C
+            datasourceUid: __expr__
+            model: {refId: C, type: math, expression: "$B > 70", datasource: {type: __expr__, uid: __expr__}}
+      - uid: nvme-critical-warning
+        title: NVMe critical warning
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Alerting
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.device }} on pve has set its NVMe critical warning flag"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model: {refId: A, expr: 'smartctl_device_critical_warning', instant: true, range: false}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, datasource: {type: __expr__, uid: __expr__}}
+          - refId: C
+            datasourceUid: __expr__
+            model: {refId: C, type: math, expression: "$B > 0", datasource: {type: __expr__, uid: __expr__}}
+      - uid: nvme-media-errors
+        title: NVMe media errors
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Alerting
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.device }} on pve reports NVMe media errors"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model: {refId: A, expr: 'smartctl_device_media_errors', instant: true, range: false}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, datasource: {type: __expr__, uid: __expr__}}
+          - refId: C
+            datasourceUid: __expr__
+            model: {refId: C, type: math, expression: "$B > 0", datasource: {type: __expr__, uid: __expr__}}
