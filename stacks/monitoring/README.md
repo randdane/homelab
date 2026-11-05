@@ -163,7 +163,22 @@ are what protect the exporters from them.
 | NVMe media errors | above 0 | 0s | OK |
 
 Deployed 2026-11-05: all ten rules healthy and Normal, and every dashboard
-query returns data. No rule in this group has fired yet. `smartd` on
+query returns data.
+
+Fire test, same day: `systemctl stop smartctl-exporter` on `pve` at
+16:44:49, restarted 16:58:58.
+
+| Time | ntfy publish |
+|---|---|
+| 16:51:45 | **pve exporter not scraped** (`up == 0` for 5 m) |
+| 16:56:46 | **SMART disk missing**: `count()` of nothing is no data, so it fired through `noDataState: Alerting`, as designed |
+| 17:01:45–46 | both resolved |
+
+The owner got all four on the phone. SMART failure, pool state,
+temperature and NVMe rules have not been triggered for real. Each uses the
+same pattern on a metric that showed data.
+
+`smartd` on
 `pve` (`docs/smart.md`) still alerts on SMART on its own, so this is a
 second path, not a replacement. Beszel still covers CPU temperature and
 `tank` usage.
