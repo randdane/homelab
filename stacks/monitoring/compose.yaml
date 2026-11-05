@@ -24,7 +24,7 @@ services:
     command:
       - -storageDataPath=/storage
       - -retentionPeriod=30d
-      - -promscrape.config=/etc/victoriametrics/scrape.yml
+      - -promscrape.config=/etc/monitoring/scrape.yml
       - -httpListenAddr=:8428
     # No %{VAR} secrets yet; phase 2's pve job reads its password from the
     # environment (README), so the variable goes here when that job does.
@@ -34,7 +34,10 @@ services:
       # vmui and /targets over `ssh -L`; no vhost, no login screen of its own.
       - "127.0.0.1:${VM_PORT:-8428}:8428"
     volumes:
-      - ./config/scrape.yml:/etc/victoriametrics/scrape.yml:ro
+      # The directory, not the file: a single-file bind mount stays pinned to
+      # the old inode after git pull or an editor save, and /-/reload rereads
+      # the stale copy (seen 2026-11-05; conventions.md, single-file mounts).
+      - ./config:/etc/monitoring:ro
       - vm-data:/storage
     healthcheck:
       # The image ships wget and not curl; checked 2026-11-05.
@@ -83,9 +86,10 @@ services:
     container_name: monitoring-blackbox
     restart: unless-stopped
     command:
-      - --config.file=/etc/blackbox/blackbox.yml
+      - --config.file=/etc/monitoring/blackbox.yml
     volumes:
-      - ./config/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+      # Directory mount, same reason as victoriametrics.
+      - ./config:/etc/monitoring:ro
     # `edge` to probe the apps by container name, as Kuma does.
     networks:
       - default
