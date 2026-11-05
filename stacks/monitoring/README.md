@@ -63,6 +63,34 @@ with dummy env values and a stand-in ntfy, then `down -v`).
 - The scrape interval is the 60 s default. A test needs a full minute
   before its result shows up.
 
+## Vhost and SSO, 2026-11-05 (plan step 3)
+
+`https://grafana.<PUBLIC_DOMAIN>`, Caddy `@grafana`: same `remote_ip`
+allowlist as kuma, **no forward-auth**. Grafana's own login is the gate.
+Native OIDC against Authentik:
+
+- Provider `grafana`: confidential, strict redirect
+  `https://grafana.<PUBLIC_DOMAIN>/login/generic_oauth`. `grant_types` is set
+  explicitly. The flows, signing key and scope mappings were copied from
+  `mealie`, using the stock email mapping: Grafana does not require
+  `email_verified`.
+- Application `grafana`, bound to group `grafana-users`. Grafana also checks
+  `allowed_groups`. Members of `grafana-admins` get Admin, everyone else
+  Viewer. The owner is in both.
+- Client ID and secret were generated locally, set on the provider through
+  the API, and written straight into `.env` on `homelab`. They were never
+  printed.
+- Setting names were read from the pinned image's `defaults.ini`
+  (`[auth.generic_oauth]`).
+
+Verified: an incognito login through Authentik worked. Authentik logged one
+`/application/o/token/` 200 from `10.201.7.24`, Grafana's `edge` address. That
+is also the proof that no `gw_priority` is needed: `monitoring` sorts after
+`edge`. Grafana has one SSO user (auth label `Generic OAuth`, role Admin)
+beside the local `admin`, which still works as the way in when Authentik is
+down. `https://nosuch.<PUBLIC_DOMAIN>` sent to Caddy still closes with no
+response.
+
 ## Unverified
 
 - **ntfy message formatting.** The webhook sends Grafana's default JSON body;
@@ -73,7 +101,6 @@ with dummy env values and a stand-in ntfy, then `down -v`).
   `probe_success` series alerts rather than reading as healthy. With more
   than one target, another target's data can mask one going missing: add a
   per-target absence check then. Not exercised by a real failure yet.
-- Grafana's address on `edge` and whether `gw_priority` is needed: step 3.
 - Resource use and 30-day disk use: measure after a week (step 6).
 - The `docker network` count gate: a deploy-time check (plan step 2).
 
