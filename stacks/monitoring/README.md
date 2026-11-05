@@ -146,6 +146,28 @@ Reachability: `pve` admits these ports from `homelab`'s LAN address only, but ta
 clients on the subnet route arrive as that address, so TLS and the password
 are what protect the exporters from them.
 
+### `pve` dashboard and alerts
+
+`config/grafana/dashboards/pve.json` ("pve host and disks") and
+`config/grafana/provisioning/alerting/pve.yml` (group `pve-disks`):
+
+| Rule | Fires when | `for` | No data |
+|---|---|---|---|
+| pve exporter not scraped | `up == 0` for either pve job | 5m | Alerting |
+| SMART health failed | any disk `smart_status == 0` | 0s | OK (next rule covers it) |
+| SMART disk missing | fewer than 3 disks report | 10m | Alerting |
+| ZFS pool not online | `tank` not ONLINE | 0s | Alerting |
+| HDD hot | `sd*` above 55 °C (normal 43–44) | 10m | OK |
+| NVMe hot | `nvme*` above 70 °C (normal ~31) | 10m | OK |
+| NVMe critical warning | flag set | 0s | OK |
+| NVMe media errors | above 0 | 0s | OK |
+
+Deployed 2026-11-05: all ten rules healthy and Normal, and every dashboard
+query returns data. No rule in this group has fired yet. `smartd` on
+`pve` (`docs/smart.md`) still alerts on SMART on its own, so this is a
+second path, not a replacement. Beszel still covers CPU temperature and
+`tank` usage.
+
 ## Unverified
 
 - **ntfy message formatting (now proved).** The contact point uses ntfy's built-in
