@@ -12,7 +12,9 @@
 #   pve_dir_storages        directory storages for backups (created if missing)
 #   pve_backup_jobs         vzdump jobs: id, options as pvesh takes them, and an
 #                           optional hook script from $SITE_DIR/pve/
-# and put one <vmid>.fw per guest in $SITE_DIR/pve/firewall/.
+# and put one <vmid>.fw per guest in $SITE_DIR/pve/firewall/. Optional:
+# $SITE_DIR/pve/cluster.fw and $SITE_DIR/pve/host.fw replace the defaults
+# below (an open host); outside firewall/ so the per-guest glob skips them.
 #
 # Before the first run, by hand, because they hold secrets:
 #   - /etc/homelab/ntfy.env (NTFY_URL, NTFY_TOKEN, NTFY_TOPIC; mode 600)
@@ -33,7 +35,8 @@
     noop: "true"
     site_pve: "{{ inventory_dir }}/../pve"
     pve_cluster_fw: "[OPTIONS]\nenable: 1\npolicy_in: ACCEPT\npolicy_out: ACCEPT\n"
-    # The host itself stays open: the guests' .fw files are the firewall.
+    # Defaults when the site repo has no cluster.fw/host.fw: the host stays
+    # open and the guests' .fw files are the firewall.
     pve_host_fw: "[OPTIONS]\nenable: 0\n"
     security_only: |
       #clear Unattended-Upgrade::Origins-Pattern;
@@ -108,8 +111,12 @@
           {%- for f in query('fileglob', site_pve + '/firewall/*.fw') -%}
             {{- l.append({'dest': '/etc/pve/firewall/' + (f | basename), 'src': f}) -}}
           {%- endfor -%}
-          {{ l + [{'dest': '/etc/pve/firewall/cluster.fw', 'text': pve_cluster_fw},
-                  {'dest': '/etc/pve/nodes/' + inventory_hostname + '/host.fw', 'text': pve_host_fw}] }}
+          {%- for name, dest, text in [('cluster.fw', '/etc/pve/firewall/cluster.fw', pve_cluster_fw),
+                                       ('host.fw', '/etc/pve/nodes/' + inventory_hostname + '/host.fw', pve_host_fw)] -%}
+            {%- set site = query('fileglob', site_pve + '/' + name) -%}
+            {{- l.append({'dest': dest, 'src': site[0]} if site else {'dest': dest, 'text': text}) -}}
+          {%- endfor -%}
+          {{ l }}
 
     - name: Firewall files now on pve
       ansible.builtin.slurp:
