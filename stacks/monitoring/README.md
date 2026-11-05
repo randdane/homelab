@@ -91,6 +91,11 @@ beside the local `admin`, which still works as the way in when Authentik is
 down. `https://nosuch.<PUBLIC_DOMAIN>` sent to Caddy still closes with no
 response.
 
+Not done, by the owner's decision: no Uptime Kuma monitor (this stack is
+meant to replace Kuma) and no Tasker phone probe (`NOT_PHONE_PROBED` in
+`scripts/check_vhosts.py`). What watches Grafana itself is an open question
+for the Kuma-replacement plan.
+
 ## Unverified
 
 - **ntfy message formatting.** The webhook sends Grafana's default JSON body;

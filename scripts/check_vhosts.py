@@ -142,7 +142,6 @@ PHONE_PROBES = (
     "authentik.{$PUBLIC_DOMAIN}",
     "beszel.{$PUBLIC_DOMAIN}",
     "forgejo.{$PUBLIC_DOMAIN}",
-    "grafana.{$PUBLIC_DOMAIN}",
     "grocy.{$PUBLIC_DOMAIN}",
     "homepage.{$PUBLIC_DOMAIN}",
     "immich.{$PUBLIC_DOMAIN}",
@@ -198,6 +197,9 @@ def wildcard_fallback_problem(text):
 # Listing a host here is a decision that nobody gets told when it breaks from
 # off-LAN -- so it needs a reason, the same way PUBLIC_HOSTS does.
 NOT_PHONE_PROBED = {
+    "grafana.{$PUBLIC_DOMAIN}":
+        "the monitoring stack itself, meant to replace Uptime Kuma; its "
+        "own probes and alerts are the check, not a Tasker request",
     "netalertr.{$PUBLIC_DOMAIN}":
         "an agent API, not used from the phone",
     "bitskit.{$PUBLIC_DOMAIN}":

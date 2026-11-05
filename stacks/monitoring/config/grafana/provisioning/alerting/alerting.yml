@@ -54,7 +54,9 @@ contactPoints:
       - uid: ntfy-webhook
         type: webhook
         settings:
-          url: http://ntfy:80/homelab-alerts
+          # ntfy's built-in Grafana template turns the webhook JSON into a
+          # readable title and message (templates/grafana.yml in ntfy 2.28).
+          url: http://ntfy:80/homelab-alerts?template=grafana
           httpMethod: POST
           authorization_scheme: Bearer
           authorization_credentials: $NTFY_TOKEN
