@@ -96,12 +96,34 @@ meant to replace Kuma) and no Tasker phone probe (`NOT_PHONE_PROBED` in
 `scripts/check_vhosts.py`). What watches Grafana itself is an open question
 for the Kuma-replacement plan.
 
+## First real alert, 2026-11-05 (plan step 4)
+
+A throwaway container `alert-test` on `edge` was added as a second Blackbox
+target, then stopped:
+
+| Time | Event |
+|---|---|
+| 15:21:37 | container stopped |
+| ~15:23 | `Probe failed` Pending for that instance only |
+| 15:25:22 | Firing, after the 2 m `for:` |
+| 15:25:35 | ntfy accepted the publish from `10.201.7.24` as user `homelab`, path `/homelab-alerts?template=grafana`, one subscriber |
+| 15:26:09 | container started |
+| ~15:28 | rule Normal |
+| 15:30:35 | second publish: the resolved notice, exactly `group_interval` (5 m) after the first |
+
+So stop → phone takes about 4 minutes (scrape 60 s + `for:` 2 m + eval and
+`group_wait`), and recovery → resolved can take up to 5 minutes. The
+temporary target and container were removed afterwards.
+
+Not yet tested: the `Blackbox not scraped` rule firing when Blackbox
+itself stops.
+
 ## Unverified
 
-- **ntfy message formatting.** The webhook sends Grafana's default JSON body;
-  how it reads on the phone is decided by test in plan step 5 (custom payload
-  vs ntfy `?template=yes`). Delivery itself (a real fire reaching ntfy) is not
-  yet tested; that is plan step 4.
+- **ntfy message formatting.** The contact point uses ntfy's built-in
+  Grafana template (`?template=grafana`; `templates/grafana.yml` is in the
+  ntfy 2.28 binary). Delivery is proved (step 4); how the message reads on
+  the phone is not yet confirmed by the owner.
 - Alert `for: 2m`; both rules `noDataState: Alerting`, so a vanished
   `probe_success` series alerts rather than reading as healthy. With more
   than one target, another target's data can mask one going missing: add a
