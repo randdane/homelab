@@ -115,15 +115,22 @@ So stop → phone takes about 4 minutes (scrape 60 s + `for:` 2 m + eval and
 `group_wait`), and recovery → resolved can take up to 5 minutes. The
 temporary target and container were removed afterwards.
 
-Not yet tested: the `Blackbox not scraped` rule firing when Blackbox
-itself stops.
+The owner confirmed both messages read clearly on the phone (title and
+target, not raw JSON).
+
+**Blackbox down**, same day: `docker compose stop blackbox` at 15:31:50.
+Both rules went Pending around 15:33 and Firing at 15:35:35:
+`Blackbox not scraped` on `up == 0`, and `Probe failed` as
+`Alerting (NoData)`, the vanished-series case. ntfy got two publishes at
+15:35:30 and 15:35:35. Blackbox started at 15:36:21, both rules were Normal
+by 15:37:06, and the two resolved notices arrived at 15:40:30 and 15:40:35.
+The owner got the alerts on the phone.
 
 ## Unverified
 
-- **ntfy message formatting.** The contact point uses ntfy's built-in
+- **ntfy message formatting (now proved).** The contact point uses ntfy's built-in
   Grafana template (`?template=grafana`; `templates/grafana.yml` is in the
-  ntfy 2.28 binary). Delivery is proved (step 4); how the message reads on
-  the phone is not yet confirmed by the owner.
+  ntfy 2.28 binary). Proved in step 4: delivered, and readable on the phone.
 - Alert `for: 2m`; both rules `noDataState: Alerting`, so a vanished
   `probe_success` series alerts rather than reading as healthy. With more
   than one target, another target's data can mask one going missing: add a
