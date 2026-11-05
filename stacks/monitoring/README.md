@@ -43,6 +43,26 @@ with dummy env values and a stand-in ntfy, then `down -v`).
 | Data source and dashboard load; `probe_success` = 1 for the target in VictoriaMetrics | Grafana API; `/api/v1/query` |
 | Healthchecks use `wget`, present in all three images (no `curl`) | `command -v wget curl` in each |
 
+## Deployed on `homelab` 2026-11-05 (plan step 2)
+
+- Docker user networks 29 → 30. Containers 48 → 51.
+- `probe_success` 1 for `http://ntfy:80/v1/health`. A bad target
+  (`http://nosuch-container:80/`) showed `probe_success` 0 with `up` 1, the
+  reason the rule keys on `probe_success`. It was removed before the 2 m
+  `for:` window, so no alert went out.
+- `docker compose down -v`, then `up -d`: the data source, dashboard, both
+  rules and the ntfy contact point all came back from the files.
+- On first start both rules sit in `Pending (NoData)` for one evaluation,
+  before the first scrape, then go to Normal. `for: 2m` keeps that silent.
+- Memory a few minutes after start: Grafana 331 MiB, VictoriaMetrics 45 MiB,
+  Blackbox 10 MiB.
+- Two fixes found on deploy: config is mounted as a directory (a single-file
+  mount kept the old inode, so `/-/reload` reread a stale copy), and the
+  VictoriaMetrics healthcheck uses `127.0.0.1` (`localhost` is `::1` in the
+  image).
+- The scrape interval is the 60 s default. A test needs a full minute
+  before its result shows up.
+
 ## Unverified
 
 - **ntfy message formatting.** The webhook sends Grafana's default JSON body;
