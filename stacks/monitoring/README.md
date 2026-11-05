@@ -126,6 +126,26 @@ Both rules went Pending around 15:33 and Firing at 15:35:35:
 by 15:37:06, and the two resolved notices arrived at 15:40:30 and 15:40:35.
 The owner got the alerts on the phone.
 
+## `pve` exporters, 2026-11-05 (plan step 5)
+
+Jobs `pve-node` (node_exporter `:9100`) and `pve-smartctl` (smartctl_exporter
+`:9633`), both HTTPS with basic auth user `monitor`. Setup on `pve` is in
+`$SITE_DIR/docs/pve-log.md`. On `homelab` they need:
+
+- `PVE_HOST` and `PVE_EXPORTER_PASSWORD` in `.env`. The password is made on
+  `pve` by the install script and moved here without being printed.
+- `config/pve-exporter.crt`: `pve`'s self-signed cert
+  (`/etc/prometheus/exporter.crt`), used as the CA so verification stays on.
+  Gitignored, so it lives on the host only. Copy it again if `pve`'s cert is
+  ever regenerated, or both targets go down with a TLS error.
+
+Seen on first scrape: both targets up; SMART status 1 for all three disks;
+`tank` online; about 4.8k series in total.
+
+Reachability: `pve` admits these ports from `homelab`'s LAN address only, but tailnet
+clients on the subnet route arrive as that address, so TLS and the password
+are what protect the exporters from them.
+
 ## Unverified
 
 - **ntfy message formatting (now proved).** The contact point uses ntfy's built-in
