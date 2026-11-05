@@ -255,6 +255,18 @@ jellyfin.{$DUCKDNS_HOST} {
 		}
 	}
 
+	# Grafana (stacks/monitoring). Same allowlist as kuma but NO forward-auth:
+	# Grafana has native OIDC with Authentik, and forward-auth on top would
+	# add the admin-uis gate and lock out the local admin login when
+	# Authentik is down. Break-glass: ssh -L to 127.0.0.1:3007 on homelab.
+	@grafana {
+		host grafana.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @grafana {
+		reverse_proxy monitoring-grafana:3000
+	}
+
 	# Dozzle and Cup: admin UIs with no login. Their host ports are bound to
 	# 127.0.0.1, so this gate is the only way in from another machine, and
 	# they sit on the `admin` network rather than `edge` so no public-facing

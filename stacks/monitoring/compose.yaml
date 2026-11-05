@@ -62,6 +62,31 @@ services:
       - GF_ANALYTICS_CHECK_FOR_UPDATES=false
       # Read by Grafana's own $VAR expansion in provisioning/alerting/.
       - NTFY_TOKEN=${NTFY_TOKEN:?set NTFY_TOKEN in .env}
+      # The vhost; OAuth callbacks and links are built from it.
+      - GF_SERVER_ROOT_URL=https://grafana.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in this stack's .env}
+      # SSO through Authentik (native OIDC, provider `grafana`). Off unless
+      # .env turns it on, so the laptop runs without a client. Authentik only
+      # lets `grafana-users` through to the app; grafana-admins get Admin,
+      # everyone else Viewer. The local admin login stays as break-glass.
+      # The token and userinfo calls come from Grafana's `edge` address and
+      # rely on @authentik_oidc_internal in the Caddyfile. `monitoring` sorts
+      # after `edge`, so no gw_priority is needed (see stacks/beszel).
+      - GF_AUTH_GENERIC_OAUTH_ENABLED=${GRAFANA_OIDC_ENABLED:-false}
+      - GF_AUTH_GENERIC_OAUTH_NAME=Authentik
+      - GF_AUTH_GENERIC_OAUTH_CLIENT_ID=${GRAFANA_OIDC_CLIENT_ID:-}
+      - GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET=${GRAFANA_OIDC_CLIENT_SECRET:-}
+      - GF_AUTH_GENERIC_OAUTH_SCOPES=openid email profile
+      - GF_AUTH_GENERIC_OAUTH_AUTH_URL=https://authentik.${PUBLIC_DOMAIN}/application/o/authorize/
+      - GF_AUTH_GENERIC_OAUTH_TOKEN_URL=https://authentik.${PUBLIC_DOMAIN}/application/o/token/
+      - GF_AUTH_GENERIC_OAUTH_API_URL=https://authentik.${PUBLIC_DOMAIN}/application/o/userinfo/
+      - GF_AUTH_GENERIC_OAUTH_SIGNOUT_REDIRECT_URL=https://authentik.${PUBLIC_DOMAIN}/application/o/grafana/end-session/
+      - GF_AUTH_GENERIC_OAUTH_USE_PKCE=true
+      - GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP=true
+      - GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH=preferred_username
+      - GF_AUTH_GENERIC_OAUTH_EMAIL_ATTRIBUTE_PATH=email
+      - GF_AUTH_GENERIC_OAUTH_GROUPS_ATTRIBUTE_PATH=groups
+      - GF_AUTH_GENERIC_OAUTH_ALLOWED_GROUPS=grafana-users
+      - "GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH=contains(groups[*], 'grafana-admins') && 'Admin' || 'Viewer'"
     ports:
       # Break-glass over ssh; the vhost (with Authentik OIDC) comes later.
       - "127.0.0.1:${GRAFANA_PORT:-3007}:3000"
@@ -69,7 +94,13 @@ services:
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./config/grafana/dashboards:/var/lib/grafana-dashboards:ro
       - grafana-data:/var/lib/grafana
-    # `edge` is for Caddy and the OIDC backchannel (later steps).
+    labels:
+      homepage.group: Ops
+      homepage.name: Grafana
+      homepage.description: Metrics history, dashboards and probe alerts
+      homepage.href: https://grafana.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in this stack's .env}
+      homepage.icon: grafana
+    # `edge` is for Caddy and the OIDC backchannel.
     networks:
       - default
       - edge
