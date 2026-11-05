@@ -1,0 +1,27 @@
+# VictoriaMetrics reads this with -promscrape.config. Reload without a restart:
+#   curl -X POST http://127.0.0.1:8428/-/reload   (from homelab)
+scrape_configs:
+  - job_name: victoriametrics
+    static_configs:
+      - targets: ["monitoring-victoriametrics:8428"]
+
+  # Multi-target Blackbox: each target is passed to the exporter as ?target=,
+  # `instance` is the target itself, and the scrape goes to the exporter.
+  # Alerts key on probe_success, never on `up` (which only says Blackbox answered).
+  - job_name: blackbox
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://ntfy:80/v1/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: monitoring-blackbox:9115
+
+  # Phase 2 (pve node_exporter, smartctl_exporter over TLS + basic auth):
+  # added in plan step 5, not here.

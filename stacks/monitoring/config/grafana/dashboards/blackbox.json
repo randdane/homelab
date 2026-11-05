@@ -1,0 +1,22 @@
+{
+  "uid": "blackbox",
+  "title": "Blackbox probes",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {"id": 1, "type": "stat", "title": "Probe success", "gridPos": {"x": 0, "y": 0, "w": 24, "h": 5},
+     "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+     "targets": [{"refId": "A", "expr": "probe_success", "legendFormat": "{{instance}}"}],
+     "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}]}, "overrides": []}},
+    {"id": 2, "type": "timeseries", "title": "Probe duration", "gridPos": {"x": 0, "y": 5, "w": 12, "h": 8},
+     "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+     "targets": [{"refId": "A", "expr": "probe_duration_seconds", "legendFormat": "{{instance}}"}],
+     "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}},
+    {"id": 3, "type": "timeseries", "title": "HTTP status", "gridPos": {"x": 12, "y": 5, "w": 12, "h": 8},
+     "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+     "targets": [{"refId": "A", "expr": "probe_http_status_code", "legendFormat": "{{instance}}"}],
+     "fieldConfig": {"defaults": {}, "overrides": []}}
+  ]
+}

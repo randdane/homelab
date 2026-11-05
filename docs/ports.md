@@ -22,6 +22,7 @@ they reserve nothing.
 3003:22 forgejo
 3004:3001 uptime-kuma
 127.0.0.1:3006:3000 karakeep
+127.0.0.1:3007:3000 monitoring-grafana
 HOMELAB_HOST:3389:3389 authentik-ldap
 127.0.0.1:3456:3456 life-queue-app
 3478:3478/udp headscale
@@ -47,6 +48,7 @@ HOMELAB_HOST:4242:4242/udp crowdsec
 127.0.0.1:8098:8080 bitskit
 127.0.0.1:8200:8200 duplicati
 127.0.0.1:8384:8384 syncthing
+127.0.0.1:8428:8428 monitoring-victoriametrics
 8686:8686 arr-lidarr
 127.0.0.1:8888:8080 searxng
 8989:8989 arr-sonarr

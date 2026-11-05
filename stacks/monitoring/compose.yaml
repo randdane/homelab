@@ -1,0 +1,115 @@
+name: monitoring
+
+# Metrics history, dashboards and alerts. VictoriaMetrics stores and scrapes,
+# Blackbox probes, Grafana draws and alerts (unified alerting, no Alertmanager).
+# Beszel and Uptime Kuma stay; this runs beside them. Plan:
+# homelab-private/docs/superpowers/plans/2026-11-05-monitoring.md
+
+x-homelab:
+  lifecycle: developing
+  host: always-on
+  exposure: lan
+  # Everything here is rebuilt from config/ in the repo; history is the only
+  # loss and 30 days of it is not precious.
+  data: replaceable
+  purpose: Metrics history and alerts on probes of the homelab, beside Beszel and Uptime Kuma
+  prerequisites: .env filled in (README); the ntfy `homelab` token
+  description: VictoriaMetrics, Grafana and Blackbox Exporter, all configured from files
+
+services:
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.155.0
+    container_name: monitoring-victoriametrics
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=30d
+      - -promscrape.config=/etc/victoriametrics/scrape.yml
+      - -httpListenAddr=:8428
+    # No %{VAR} secrets yet; phase 2's pve job reads its password from the
+    # environment (README), so the variable goes here when that job does.
+    environment:
+      - TZ=${TZ:-America/Chicago}
+    ports:
+      # vmui and /targets over `ssh -L`; no vhost, no login screen of its own.
+      - "127.0.0.1:${VM_PORT:-8428}:8428"
+    volumes:
+      - ./config/scrape.yml:/etc/victoriametrics/scrape.yml:ro
+      - vm-data:/storage
+    healthcheck:
+      # The image ships wget and not curl; checked 2026-11-05.
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8428/health || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  grafana:
+    image: grafana/grafana:13.2.5
+    container_name: monitoring-grafana
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      # Read by Grafana's own $VAR expansion in provisioning/alerting/.
+      - NTFY_TOKEN=${NTFY_TOKEN:?set NTFY_TOKEN in .env}
+    ports:
+      # Break-glass over ssh; the vhost (with Authentik OIDC) comes later.
+      - "127.0.0.1:${GRAFANA_PORT:-3007}:3000"
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana-dashboards:ro
+      - grafana-data:/var/lib/grafana
+    # `edge` is for Caddy and the OIDC backchannel (later steps).
+    networks:
+      - default
+      - edge
+    depends_on:
+      - victoriametrics
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3000/api/health || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.29.1
+    container_name: monitoring-blackbox
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./config/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    # `edge` to probe the apps by container name, as Kuma does.
+    networks:
+      - default
+      - edge
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:9115/-/healthy || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  vm-data:
+    labels:
+      # Metric history only; the scrape config is in the repo and 30 days of
+      # trend lines are not worth a nightly archive.
+      homelab.backup: exclude
+  grafana-data:
+    labels:
+      # Data source, dashboards, alert rules and contact point are provisioned
+      # from config/ in the repo; the volume holds only the SQLite state that
+      # is rebuilt on start (sessions, alert state history).
+      homelab.backup: exclude
+
+networks:
+  edge:
+    external: true
