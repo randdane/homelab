@@ -23,5 +23,28 @@ scrape_configs:
       - target_label: __address__
         replacement: monitoring-blackbox:9115
 
-  # Phase 2 (pve node_exporter, smartctl_exporter over TLS + basic auth):
-  # added in plan step 5, not here.
+  # pve's exporters (plan step 5): HTTPS with basic auth, on pve's LAN address
+  # only; pve's host firewall admits 9100/9633 from homelab alone. The cert is
+  # pve's self-signed one, copied to config/pve-exporter.crt on homelab and
+  # gitignored (README). %{VAR} comes from VictoriaMetrics' environment.
+  - job_name: pve-node
+    scheme: https
+    tls_config:
+      ca_file: /etc/monitoring/pve-exporter.crt
+    basic_auth:
+      username: monitor
+      password: "%{PVE_EXPORTER_PASSWORD}"
+    static_configs:
+      - targets: ["%{PVE_HOST}:9100"]
+        labels: {host: pve}
+
+  - job_name: pve-smartctl
+    scheme: https
+    tls_config:
+      ca_file: /etc/monitoring/pve-exporter.crt
+    basic_auth:
+      username: monitor
+      password: "%{PVE_EXPORTER_PASSWORD}"
+    static_configs:
+      - targets: ["%{PVE_HOST}:9633"]
+        labels: {host: pve}
