@@ -69,5 +69,5 @@ the stock `profile` mapping. Email is trusted from Authentik even though it send
 ## Unverified
 
 - The vhost from the phone (not phone-probed during the trial).
-- Backups of `mealier_data` until the backup container is recreated and
-  `check_backups.py` passes on `homelab`.
+- The first nightly archive containing `mealier_data`. The backup container
+  mounts it since 2026-11-07 (`check_backups.py` clean on `homelab`).
