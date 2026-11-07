@@ -38,7 +38,36 @@ vhost until cutover.
 - **Mealie keeps three backups on its server** and deletes the oldest on each
   new one. Copy a backup off the server before making more.
 
+## Authentik
+
+Native OIDC. Provider and application `mealier` (confidential,
+`authorization_code` + `refresh_token`, strict redirect `/auth/callback`, the
+same flows, signing key and scope mappings as `mealie`'s provider); the
+application is bound to `mealier-users`. `groups` reaches the ID token through
+the stock `profile` mapping. Email is trusted from Authentik even though it sends
+`email_verified: false`.
+
+## Measured (2026-11-06, first deploy)
+
+- Idle memory 2.2 MiB (`docker stats`), against Mealie's 220–450 MB. Image
+  43.8 MB uncompressed.
+- Trial import of a Mealie v3.28 backup: 2 groups, 2 households, 4 recipes,
+  2691 foods, every other mapped table present; skipped items listed in the
+  report.
+- SSO tested in an incognito window: Authentik logged a `/application/o/token/`
+  200 from mealier's own container address, and the imported user was linked by
+  email (one account, not two). Local admin login also works.
+- No Uptime Kuma monitor: Sablier stops it when idle, and `check_monitors.py`
+  skips Sablier stacks.
+
+## What broke on the way
+
+- A new named volume was root's and the nonroot process could not create its
+  database. Fixed in the image (it now ships `/data` owned by 65532); the first
+  volume was chowned by hand once.
+
 ## Unverified
 
-- Everything below the image: first deploy, import of the trial backup, OIDC
-  against the real Authentik, the vhost from the phone.
+- The vhost from the phone (not phone-probed during the trial).
+- Backups of `mealier_data` until the backup container is recreated and
+  `check_backups.py` passes on `homelab`.
