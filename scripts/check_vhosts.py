@@ -197,6 +197,9 @@ def wildcard_fallback_problem(text):
 # Listing a host here is a decision that nobody gets told when it breaks from
 # off-LAN -- so it needs a reason, the same way PUBLIC_HOSTS does.
 NOT_PHONE_PROBED = {
+    "mealier.{$PUBLIC_DOMAIN}":
+        "on trial beside Mealie; a probe would wake it through Sablier "
+        "every run. Move to PHONE_PROBES if it replaces Mealie",
     "grafana.{$PUBLIC_DOMAIN}":
         "the monitoring stack itself, meant to replace Uptime Kuma; its "
         "own probes and alerts are the check, not a Tasker request",

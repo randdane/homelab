@@ -114,6 +114,8 @@ services:
       - paperless_pg-data:/backup/paperless-pg:ro
       # Recipes, images, and the SQLite database.
       - mealie_data:/backup/mealie:ro
+      # mealier (Mealie rewrite on trial): SQLite, images and assets.
+      - mealier_data:/backup/mealier:ro
       # Homebox: SQLite plus every receipt and manual attached to an item.
       - homebox_data:/backup/homebox:ro
       # Supernote: the sync database, the notes, and the cloud's recycle bin.
@@ -196,6 +198,8 @@ volumes:
   #owncloud_mysql:
   #  external: true
   mealie_data:
+    external: true
+  mealier_data:
     external: true
   homebox_data:
     external: true

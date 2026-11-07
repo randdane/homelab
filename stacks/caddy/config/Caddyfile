@@ -373,6 +373,24 @@ jellyfin.{$DUCKDNS_HOST} {
 		}
 	}
 
+	@mealier {
+		host mealier.{$PUBLIC_DOMAIN}
+		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1
+	}
+	handle @mealier {
+		# Rust rewrite of Mealie, on trial. Stopped when idle by stacks/sablier.
+		route {
+			sablier http://sablier:10000 {
+				group mealier
+				session_duration 30m
+				dynamic {
+					display_name mealier
+				}
+			}
+			reverse_proxy mealier:9000
+		}
+	}
+
 	@homebox {
 		host homebox.{$PUBLIC_DOMAIN}
 		remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48 {$LAN_CIDR} 127.0.0.1/8 ::1

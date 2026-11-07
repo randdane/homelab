@@ -1,0 +1,70 @@
+name: mealier
+
+x-homelab:
+  lifecycle: developing
+  host: always-on
+  exposure: lan
+  data: precious
+  purpose: Recipes with a batch log; a Rust rewrite of Mealie, on trial beside it
+  prerequisites: PUBLIC_DOMAIN in .env
+  description: One static binary; SQLite, images and assets live in one volume
+
+services:
+  mealier:
+    image: ${MEALIER_IMAGE:?set MEALIER_IMAGE in .env}:${MEALIER_TAG:?set MEALIER_TAG in .env (a CI commit sha)}
+    container_name: mealier
+    # Also brings it back after an in-app restore, which exits on purpose.
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    stop_grace_period: 20s
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - MEALIER_BASE_URL=https://mealier.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      # Break-glass local admin: an argon2id hash from `mealier hash-password`.
+      # Blank leaves local login disabled.
+      - MEALIER_ADMIN_PASSWORD_FILE=${MEALIER_ADMIN_PASSWORD_FILE:-}
+      # SSO through Authentik. Off until .env sets the discovery URL; the
+      # backend fetches it from its `edge` address via @authentik_oidc_internal.
+      - OIDC_CONFIGURATION_URL=${OIDC_CONFIGURATION_URL:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET_FILE=${OIDC_CLIENT_SECRET_FILE:-}
+    secrets:
+      - admin_password_hash
+      - oidc_client_secret
+    ports:
+      - "127.0.0.1:${PORT:-9926}:9000"
+    volumes:
+      - data:/data
+    # `edge` only: Caddy reaches it by name, and a single service needs no
+    # project network (homelab sits near Docker's address-pool ceiling).
+    networks:
+      - edge
+    labels:
+      # Stopped when idle, started by its vhost. stacks/sablier
+      sablier.enable: "true"
+      sablier.group: mealier
+      homepage.group: Home
+      homepage.name: mealier
+      homepage.description: Recipes with a batch log (trial)
+      homepage.href: https://mealier.${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      homepage.icon: mealie
+      docker-volume-backup.stop-during-backup: "true"
+    # No healthcheck block: the image ships one (`mealier healthcheck`).
+
+secrets:
+  admin_password_hash:
+    environment: MEALIER_ADMIN_PASSWORD_HASH
+  oidc_client_secret:
+    environment: OIDC_CLIENT_SECRET
+
+networks:
+  edge:
+    external: true
+
+volumes:
+  # SQLite database, images and assets. Recipes imported from sites that later
+  # go down exist only here.
+  data:
