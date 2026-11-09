@@ -15,17 +15,17 @@
 # Several devices are checked in one run and reported in one notification,
 # so pve's HDD and NVMe arrive together. Exit status is the worst of them:
 # 0 = all healthy (and reported), 1 = a disk has a problem, 2 = could not
-# check one. A problem is notified here too, not only via OnFailure, because
+# check one, 3 = the notification could not be sent (1 still wins over 3). A problem is notified here too, not only via OnFailure, because
 # pve has no homelab-failure-notify unit. The unit sets SuccessExitStatus=2: "not checked" is not "passed", but
 # it is not a 3am page either.
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SMARTCTL=/usr/sbin/smartctl
+SMARTCTL="${SMARTCTL:-/usr/sbin/smartctl}"  # override for scripts/test_smart_report.py
 
 # Root under a system unit, sudo otherwise. The NOPASSWD rule for smartctl is
 # the one this repo assumes; without it there is no reading SMART at all.
-if [ "$(id -u)" = 0 ]; then
+if [ "$(id -u)" = 0 ] || [ -n "${SMARTCTL_NO_SUDO:-}" ]; then  # the latter for tests
     SUDO=()
 else
     SUDO=(sudo -n)
@@ -90,6 +90,11 @@ MSG="$(printf '%s\n' "${LINES[@]}")"
 
 # 240 s: notify.py retries for up to 180 s, through the nightly backup's ntfy stop.
 # python3, not uv: notify.py is standard-library only and this may run as root.
-timeout 240 python3 "$REPO/scripts/notify.py" --title "$TITLE" --message "$MSG" \
-    || echo "notification failed" >&2
+# A failed send must not exit 0: healthy disks plus a broken ntfy would read as
+# success, and the monthly heartbeat would vanish without a trace. Exit 3 is
+# outside SuccessExitStatus=2, so the unit fails and OnFailure fires.
+if ! timeout 240 python3 "$REPO/scripts/notify.py" --title "$TITLE" --message "$MSG"; then
+    echo "notification failed" >&2
+    if [ "$WORST" = 0 ] || [ "$WORST" = 2 ]; then WORST=3; fi
+fi
 exit "$WORST"
