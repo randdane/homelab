@@ -74,6 +74,7 @@ step "check_derp self-test" uv run scripts/check_derp.py --self-test
 # nothing ran them. They cover the one stack that is built rather than pulled,
 # where a wrong answer means the only internet-facing service goes unwatched.
 step "check_updates self-test" uv run scripts/check_updates.py --self-test
+step "lvm_thin_metrics self-test" python3 -I scripts/lvm_thin_metrics.py --self-test
 
 # The word list CI scans for is a copy of .site-words, held in two secret
 # stores that cannot be read back. Only the machine that owns the list can

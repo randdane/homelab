@@ -170,3 +170,47 @@ groups:
           - refId: C
             datasourceUid: __expr__
             model: {refId: C, type: math, expression: "$B > 0", datasource: {type: __expr__, uid: __expr__}}
+      # LVM thin pool (local-lvm): every guest disk lives in it, so a full pool
+      # stalls all of them. Written by pve-lvm-thin.timer (scripts/lvm_thin_metrics.py).
+      # 80%: at 8.5% on 2026-11-09, so this is far from normal and still leaves
+      # room to act. No data alerts: it means the timer stopped.
+      - uid: lvm-thin-full
+        title: LVM thin pool filling
+        condition: C
+        for: 15m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: {severity: critical}
+        annotations:
+          summary: "thin pool {{ $labels.vg }}/{{ $labels.lv }} on pve is over 80% full (data or metadata); every guest disk in it stalls when it fills"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model: {refId: A, expr: 'max by (vg, lv) ({__name__=~"lvm_thin_(data|metadata)_percent"})', instant: true, range: false}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, datasource: {type: __expr__, uid: __expr__}}
+          - refId: C
+            datasourceUid: __expr__
+            model: {refId: C, type: math, expression: "$B > 80", datasource: {type: __expr__, uid: __expr__}}
+      - uid: lvm-thin-stale
+        title: LVM thin pool metrics stale
+        condition: C
+        for: 10m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: {severity: warning}
+        annotations:
+          summary: "pve-lvm-thin.timer has not written thin-pool usage for 20 min, so the pool-full alert cannot fire"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model: {refId: A, expr: 'time() - lvm_thin_last_run_timestamp_seconds', instant: true, range: false}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, datasource: {type: __expr__, uid: __expr__}}
+          - refId: C
+            datasourceUid: __expr__
+            model: {refId: C, type: math, expression: "$B > 1200", datasource: {type: __expr__, uid: __expr__}}

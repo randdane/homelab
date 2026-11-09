@@ -69,7 +69,7 @@
         src: ../scripts/{{ item }}
         dest: "{{ scripts }}/{{ item }}"
         mode: "{{ '0644' if item.endswith('.py') else '0755' }}"
-      loop: [smart-alert.sh, smart-report.sh, notify.py]
+      loop: [smart-alert.sh, smart-report.sh, notify.py, lvm_thin_metrics.py]
 
     - name: smartd finds the credentials
       ansible.builtin.copy:
@@ -100,6 +100,23 @@
         enabled: true
         state: started
         daemon_reload: true
+
+    # --- LVM thin-pool usage, for stacks/monitoring (node_exporter has no LVM collector) ---
+    - name: Thin-pool metrics units
+      ansible.builtin.copy:
+        src: ../scripts/systemd/{{ item }}
+        dest: /etc/systemd/system/{{ item }}
+        mode: "0644"
+      loop: [pve-lvm-thin.service, pve-lvm-thin.timer]
+
+    - name: Thin-pool metrics timer enabled
+      ansible.builtin.systemd_service:
+        name: pve-lvm-thin.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      # A dry run has not copied the unit yet, so there is nothing to enable.
+      ignore_errors: "{{ ansible_check_mode }}"
 
     # --- Firewall ---
     # pmxcfs refuses chmod and rename, so copy cannot write here (see

@@ -1,0 +1,7 @@
+[Unit]
+Description=Write LVM thin-pool usage for node_exporter (stacks/monitoring alerts on it)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/homelab/scripts/lvm_thin_metrics.py
+TimeoutStartSec=60

@@ -16,7 +16,7 @@
 #   - the VLAN, dream's inter-VLAN block and Pi-hole's "permit all origins" --
 #     router and appliance config, by hand (networks.md)
 #   - template 9000 -- homelab-vm.yml builds it; this play only requires it
-#   - Docker, agent stacks, API keys -- the kennel project; the VM gets its own
+#   - Incus, agents, API keys -- the kennel project; the VM gets its own
 #     capped keys, never anything from the workstation's token store
 #   - tailnet -- the VM is deliberately not a member
 
@@ -74,6 +74,24 @@
     - name: Remember whether there is a VM to check
       ansible.builtin.set_fact:
         vm_exists: "{{ vm_status.rc == 0 or cloned is changed }}"
+
+    # Second disk: the Incus storage pool (kennel's plan, 2026-11-09-kennel-incus).
+    # Kept off scsi0 so a full pool cannot fill the root disk. Added to the
+    # existing VM, not only at clone, and hot-plugged (hotplug includes disk,
+    # virtio-scsi-single), so no reboot. vm_disk2 is GiB, a bare number:
+    # `local-lvm:<N>` allocates a new N GiB thin volume.
+    - name: Second disk present?
+      when: vm_exists and vm.vm_disk2 is defined
+      ansible.builtin.shell: qm config {{ vm.vmid }} | grep -q '^scsi1:'
+      register: disk2
+      changed_when: false
+      failed_when: false
+      check_mode: false # reads only
+
+    - name: Second disk ({{ vm.vm_disk2 | default('none') }} GiB, scsi1)
+      when: vm_exists and vm.vm_disk2 is defined and disk2.rc != 0
+      ansible.builtin.command: >-
+        qm set {{ vm.vmid }} --scsi1 local-lvm:{{ vm.vm_disk2 }},discard=on,ssd=1,backup=0
 
     # pmxcfs refuses chmod and rename, so the copy module cannot write here
     # (temp-file-and-rename, then unsafe_writes, both EPERM). A plain write,
@@ -154,8 +172,8 @@
       failed_when: false
 
 # sshd, unattended-upgrades, sysctl -- the same checks homelab runs. Its
-# ip_forward = 1 is needed there too: kennel's Docker bridge networking forwards.
-# This is the end of homelab's side: a hardened VM. Docker and the agents are
+# ip_forward = 1 is needed there too: kennel's Incus bridges forward.
+# This is the end of homelab's side: a hardened VM. Incus and the agents are
 # ~/Projects/_personal/kennel's.
 # The hardening play gathers facts first thing, which races a VM qm start
 # booted seconds ago.
