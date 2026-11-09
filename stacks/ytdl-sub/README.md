@@ -70,6 +70,11 @@ Scheduled runs log to `docker logs ytdl-sub`.
 - **Nothing is backed up.** `tank` is a mirror, which survives a dead disk but
   not a deleted file, and B2 does not take media.
   Only Recent keeps it small enough not to matter.
-- **Not monitored.** No healthcheck (no HTTP to probe) and no Kuma monitor.
-  A run that fails every night is visible only in the container log.
+- **Monitored by healthchecks.io, if `HC_URL` is set.** `config/cron.sh`
+  pings it after a good run and pings `/fail` when the share is not virtiofs
+  or ytdl-sub exits non-zero; a run that never starts goes quiet and the
+  check's period catches it. No Docker healthcheck or Kuma monitor (no HTTP
+  to probe). Create the check with period 1 day, grace 2 h. To prove it,
+  run the job by hand and watch the check:
+  `docker exec -w /tmp ytdl-sub bash -c '. /ytdl/cron.sh'` (`-w /tmp`: see the lock-file note above).
 - **No Authentik**: there is no UI to put it in front of (§0 "neither").

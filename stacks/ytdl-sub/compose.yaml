@@ -36,6 +36,9 @@ services:
       # YouTube breaks yt-dlp every few weeks; a restart picks up the fix
       # without waiting for a new ytdl-sub image.
       - UPDATE_YT_DLP_ON_START=stable
+      # healthchecks.io ping URL; config/cron.sh pings it after each run
+      # (/fail on failure). Optional: unset, a run only logs.
+      - HC_URL=${HC_URL:-}
     volumes:
       - ./config:/ytdl:ro
       # Site data -- the channel list -- from the SITE_DIR checkout, as a
