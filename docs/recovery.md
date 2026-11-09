@@ -1,11 +1,12 @@
 # Recovery: getting the homelab back from a backup
 
 > [!NOTE]
-> A copy of this runbook also lives in the Obsidian vault at
-> `AoI/Homelab/Backups/Homelab-Recovery.md`, for reading away from the repo —
-> including from a phone while the server is down, which is the likeliest way
-> you will read it. **This file is the canonical one.** Edit here, then copy
-> across.
+> **Read it on GitHub when the server is down**, which is the likeliest time
+> you will need it: this file on the repo's `main` branch. Keep that link
+> somewhere that does not depend on the lab (here, a vault note that holds
+> only the link).
+> It used to be a full copy, and by 2026-11-09 it had fallen ~140 lines behind
+> this file. Two copies drift.
 
 Written 2026-08-24, against a real drill run end to end on the first server: an archive
 was pulled from Backblaze B2, decrypted, extracted, and both databases were
@@ -156,11 +157,16 @@ that has never been wrong out loud.
 
 ## 1. Decide which failure you are in
 
-| Situation | Where the data is | Go to |
+**Pick the smallest restore that covers the loss.** Each layer is a different
+backup with its own tool; they are listed smallest first.
+
+| Situation | Backup to use | Go to |
 |---|---|---|
-| A service is broken, host is fine | local archives on `homelab` | §3 (skip §2) |
-| `homelab`'s disk is dead, replaced | B2 only | §2 |
-| A file was deleted, need one volume | either | §3 |
+| A file was deleted, or one service's data is bad; host is fine | nightly local archive on the Docker VM | §3, §4, §5 |
+| The same, but the local archives are gone or too new | B2, via Duplicati | §2, then §3–§5 |
+| The Docker VM or a container guest is broken or deleted; the hypervisor is fine | the hypervisor's own nightly `vzdump`, or the weekly PBS copy | §1b |
+| The hypervisor's disks are gone | PBS for the guests; B2 for volumes and photos | `docs/host-setup.md`, then §1b, then §2 |
+| You have nothing but the password manager | B2 | §0 "Prove it", then §2b |
 
 Local archives live at
 `~/.local/state/homelab/backups/homelab-<timestamp>.tar.gz` — retention is 14
@@ -170,27 +176,56 @@ days (`BACKUP_RETENTION_DAYS`). In B2, job `offsite-data` keeps 10 days and
 Note these are **different retention windows**. Anything older than the local
 window exists only in B2.
 
-### What you do not get back: `/srv/media`
+### 1b. Restoring a whole guest (Proxmox)
 
-**588 GB of films and TV in `/srv/media` is deliberately not backed up, and a
-dead disk loses all of it.** This is a decision, not an oversight -- do not
-"fix" it during a recovery.
+**Restore under a new ID and keep it off the network until it is checked.** A
+restored guest is a clone of the live one: same IPs, same tailnet identity,
+same shares. Started as-is it collides with production. Proved 2026-10-11 for
+both the VM and the container (VM 198 s, container 29 s, from PBS).
 
-Backing it up would mean keeping a second server powered for its 6 TB drive, at
-~55 W, which is half the lab's entire always-on draw and the reason that
-machine was retired. That is a standing cost to insure files that can be
-downloaded again.
+```bash
+# on the hypervisor; list what you can restore from
+pvesm list <storage>                       # vzdump dir, or the PBS datastore
+qmrestore <volid> <new-vmid> --unique 1 --storage local-lvm   # a VM
+pct restore <new-ctid> <volid> --unique 1 --storage local-lvm  # a container
+```
 
-The accepted loss is **weeks of re-downloading over a 100 Mb/s link**, not
-anything irreplaceable: 109 films and 26 series, all publicly released, none
-of it personal. Nothing else in `/srv/media` is unique -- `music/` is an empty
-placeholder.
+Before the first start, strip everything that reaches something live:
 
-Worth being clear about the geometry, because it is easy to misread: the
-media and every Docker volume share one 1 TB 5400rpm disk (`/dev/sda2`, 74%
-full). A disk failure takes both. The volumes come back from B2; the media
-does not. That split is intentional and correctly sized -- the half that is
-hard to rebuild is the half that is insured.
+| Guest | Remove or isolate | Why |
+|---|---|---|
+| VM | `qm set <id> --net0 <model>,bridge=<br>,link_down=1` | it holds the LAN address and the tailnet identity |
+| VM | `qm set <id> --delete virtiofs0 --delete virtiofs1` (every `virtiofs*` line in `qm config`) | the shares are the live photo and media datasets |
+| container | `pct set <id> --delete net0 --delete mp0 --delete dev0 --onboot 0` | the bind mount is the live media; `dev0` is the GPU |
+
+`--unique 1` gives new MACs, which is not enough on its own: the addresses
+and keys inside the guest are unchanged.
+
+**Worked if:** the guest boots; for the VM, `/opt/homelab` is there and
+`docker volume ls | wc -l` matches production; for the container, its
+service's database opens read-only (SQLite: `mode=ro&immutable=1`, §4a).
+Then `qm destroy <id>` / `pct destroy <id>`, and confirm the ID is gone.
+
+To **replace** production with it, stop and remove the broken guest, restore
+to its original ID without `--unique`, and skip the stripping. Do the
+isolated check first anyway; it is the only proof the backup boots.
+
+Bind-mounted datasets are not in the guest backup. That is why the
+container cannot be snapshotted, and why the photo library is backed up
+separately (file-level, into PBS, and to B2 by Duplicati).
+
+### What you do not get back: the media library
+
+**Films, TV and downloaded video are deliberately in no backup.** They sit on
+the hypervisor's ZFS mirror, which survives one dead disk but not a deleted
+file or a lost pool. Neither PBS nor B2 takes them. This is a decision, not
+an oversight -- do not "fix" it during a recovery.
+
+The accepted loss is re-downloading publicly released media over the WAN
+link: slow, not irreplaceable. Insuring it would mean several terabytes of
+offsite storage or a second always-on disk host, for files that can be
+fetched again. Personal photos are the opposite case, and are backed up
+twice (§1b).
 
 ---
 
@@ -636,5 +671,6 @@ finds first.
 2. `ls -lt ~/.local/state/homelab/backups | head -3` — newest is < 24h old.
 3. `docker exec backup sh -c 'cd /backup && for d in *; do printf "%-24s %s\n" "$d" "$(ls -A "$d" | wc -l)"; done'`
    — every stack you actually run shows a non-zero count.
-4. Once or twice a year, do §3 + §4 for real. A backup you have never
-   restored is a hypothesis.
+4. **Twice a year, a real drill.** Alternate: `scripts/recovery-drill.sh` from
+   a machine that is not the server (§0), and a §1b guest restore. Do both
+   once a year. A backup you have never restored is a hypothesis.
