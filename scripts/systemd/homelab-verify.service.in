@@ -21,5 +21,6 @@ Environment=HOME=@HOME@
 # Measured at 7.5s against the real bucket on 2026-08-27, but the script waits
 # up to 5 minutes for Duplicati to answer after a boot, and a verify grows with
 # the archive. 30 minutes is slack, not an expectation.
-TimeoutStartSec=1800
+# 20 min lock wait (run_backups.sh) + ~25 min verify.
+TimeoutStartSec=3000
 ExecStart=@REPO@/scripts/run_backups.sh --verify
