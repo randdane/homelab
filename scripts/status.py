@@ -917,6 +917,35 @@ def unmounted_backup_problem(registered, mounted, daemon_down=False):
             f"&& docker compose up -d --force-recreate")
 
 
+IMMICH_DUMP_DIR = Path("/mnt/photos/immich/backups")
+# Immich dumps its database daily at 02:00; same slack as the archive check.
+MAX_IMMICH_DUMP_AGE_HOURS = MAX_ARCHIVE_AGE_HOURS
+
+
+def immich_dump_problem(directory=IMMICH_DUMP_DIR, now=None,
+                        maximum=MAX_IMMICH_DUMP_AGE_HOURS):
+    """Whether Immich's newest database dump is too old.
+
+    Immich reports a failed dump only in its own UI, so a broken one goes
+    unnoticed while Duplicati keeps shipping the last good dump to B2. Age of
+    the newest file is the honest question, as for the archives. A missing or
+    unreadable directory is a problem too: it means the photos share is not
+    mounted, which is worse.
+    """
+    try:
+        mtimes = [f.stat().st_mtime for f in directory.glob("*.sql.gz")]
+        directory.stat()
+    except OSError as e:
+        return f"immich: cannot read its DB dumps in {directory} ({e.strerror}) -- is /mnt/photos mounted?"
+    if not mtimes:
+        return f"immich: no DB dump in {directory} -- check Administration > Jobs"
+    hours = ((time.time() if now is None else now) - max(mtimes)) / 3600
+    if hours <= maximum:
+        return None
+    return (f"immich: newest DB dump is {hours:.0f}h old, want <= {maximum}h "
+            f"-- check Administration > Jobs and docker logs immich-server")
+
+
 MAX_NETALERTX_SILENCE_MINUTES = 30
 
 
@@ -1169,6 +1198,11 @@ def problems_for(rows, state):
     # Scoped like the backup checks: only where NetAlertX has actually run.
     if has_run_here(state, "netalertx"):
         stale = netalertx_stale_problem(netalertx_minutes_since_seen())
+        if stale:
+            problems.append(stale)
+
+    if has_run_here(state, "immich"):
+        stale = immich_dump_problem()
         if stale:
             problems.append(stale)
 

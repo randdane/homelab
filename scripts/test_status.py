@@ -1452,3 +1452,31 @@ def test_sablier_crash_loop_is_not_idle():
     observed = {n: _svc(running=False, status="restarting", sablier=True) for n in DEFINED}
     assert status.aggregate_status(
         DEFINED, observed, daemon_ok=True, ever_ran=True) == "down"
+
+
+# --- immich_dump_problem ----------------------------------------------------
+
+def _dump(directory, hours_old, now=1_800_000_000):
+    f = directory / f"immich-db-backup-{hours_old}.sql.gz"
+    f.write_bytes(b"x")
+    os.utime(f, (now - hours_old * 3600,) * 2)
+
+
+def test_immich_fresh_dump_is_fine(tmp_path):
+    _dump(tmp_path, 40)
+    _dump(tmp_path, 3)
+    assert status.immich_dump_problem(tmp_path, now=1_800_000_000) is None
+
+
+def test_immich_old_dump_is_a_problem(tmp_path):
+    _dump(tmp_path, 37)
+    assert "37h old" in status.immich_dump_problem(tmp_path, now=1_800_000_000)
+
+
+def test_immich_no_dump_is_a_problem(tmp_path):
+    (tmp_path / "not-a-dump.txt").write_text("x")
+    assert "no DB dump" in status.immich_dump_problem(tmp_path, now=1_800_000_000)
+
+
+def test_immich_missing_directory_is_a_problem(tmp_path):
+    assert "mounted" in status.immich_dump_problem(tmp_path / "gone")
