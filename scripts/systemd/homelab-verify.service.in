@@ -7,7 +7,10 @@ Documentation=file:@REPO@/docs/recovery.md
 OnFailure=homelab-failure-notify@%n.service
 
 # Duplicati must be up to be asked.
-After=docker.service
+# After the boot-time reconcile: a catch-up run must not archive while
+# `docker compose up -d` is recreating the containers it expects stopped.
+# Harmless where that unit is not installed.
+After=docker.service homelab-reconcile.service
 Wants=docker.service
 [Service]
 Type=oneshot

@@ -5,7 +5,10 @@ Description=Nightly local archive, then offsite push
 Documentation=file:@REPO@/stacks/backup/README.md
 # Both halves talk to Docker. After a boot this can otherwise start before
 # the daemon is ready; the script also waits for the container itself.
-After=docker.service network-online.target
+# After the boot-time reconcile: a catch-up run must not archive while
+# `docker compose up -d` is recreating the containers it expects stopped.
+# Harmless where that unit is not installed.
+After=docker.service homelab-reconcile.service network-online.target
 Wants=network-online.target
 
 # A failed unit is otherwise silent: systemd marks it failed and

@@ -40,6 +40,19 @@ BACKUP_CONTAINER=backup
 log() { printf '%s %s\n' "$(date -Is)" "$*" >&2; }
 fail() { log "FAILED: $*"; exit 1; }
 
+# One run at a time, backup or --verify. With Persistent catch-ups after the
+# host was off through both slots, the two can start together, and either
+# would stop Duplicati under the other. Taken before any work and held until
+# the process exits, so through the EXIT trap's Duplicati stop as well.
+LOCK="${XDG_STATE_HOME:-$HOME/.local/state}/homelab/run_backups.lock"
+install -d "$(dirname "$LOCK")"
+exec 9>>"$LOCK"
+# 20 min: longer than a verify, so a backup waits one out; a verify that
+# meets a long backup fails with this message rather than at TimeoutStartSec.
+if ! flock -w "${BACKUP_LOCK_WAIT:-1200}" 9; then
+    fail "another run_backups.sh still holds $LOCK -- see journalctl -u homelab-backup -u homelab-verify"
+fi
+
 # The container must be up before `docker exec` can reach it. After a boot
 # this unit can start before Docker has finished starting containers, so wait
 # rather than failing on a race.

@@ -116,3 +116,27 @@ def test_running_duplicati_is_left_running(tmp_path):
     r, calls = run_with_docker(tmp_path, "true")
     assert r.returncode == 0, r.stderr
     assert not any(c.startswith(("start", "stop")) for c in calls)
+
+
+def test_second_run_waits_for_the_lock_then_fails(tmp_path):
+    # Backup and verify share one lock; a run that cannot get it must fail
+    # loudly instead of stopping Duplicati under the other.
+    state = tmp_path / "state"
+    lock = state / "homelab/run_backups.lock"
+    lock.parent.mkdir(parents=True)
+    holder = subprocess.Popen(["flock", lock, "sleep", "30"])
+    try:
+        for _ in range(50):
+            if subprocess.run(["flock", "-n", lock, "true"]).returncode:
+                break
+            subprocess.run(["sleep", "0.1"])
+        repo = tmp_path / "repo"
+        (repo / "scripts").mkdir(parents=True)
+        shutil.copy(SCRIPT, repo / "scripts/run_backups.sh")
+        env = dict(os.environ, XDG_STATE_HOME=str(state), BACKUP_LOCK_WAIT="1")
+        r = subprocess.run(["bash", repo / "scripts/run_backups.sh", "--verify"],
+                           capture_output=True, text=True, env=env, timeout=30)
+    finally:
+        holder.kill()
+    assert r.returncode == 1
+    assert "still holds" in r.stderr
