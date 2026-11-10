@@ -182,7 +182,7 @@ groups:
         execErrState: Alerting
         labels: {severity: critical}
         annotations:
-          summary: "thin pool {{ $labels.vg }}/{{ $labels.lv }} on pve is over 80% full (data or metadata); every guest disk in it stalls when it fills"
+          summary: "thin pool {{ $labels.vg }}/{{ $labels.lv }} is over 80% full (data or metadata); every volume in it stalls when it fills (incus/IncusThinPool is kennel's, read via the guest agent)"
         data:
           - refId: A
             relativeTimeRange: {from: 600, to: 0}
@@ -202,7 +202,7 @@ groups:
         execErrState: Alerting
         labels: {severity: warning}
         annotations:
-          summary: "pve-lvm-thin.timer has not written thin-pool usage for 20 min, so the pool-full alert cannot fire"
+          summary: "thin-pool usage not updated for 20 min{{ if $labels.vmid }} for VM {{ $labels.vmid }} (guest agent read failing){{ end }}, so the pool-full alert cannot fire"
         data:
           - refId: A
             relativeTimeRange: {from: 600, to: 0}
