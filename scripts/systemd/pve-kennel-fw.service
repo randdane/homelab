@@ -1,6 +1,9 @@
 [Unit]
 Description=Check kennel's two firewall layers (stacks/monitoring alerts on the result)
 
+# No key, no run: the stale alert then says the check is not running.
+ConditionPathExists=/etc/homelab/unifi.key
+
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/python3 -I /usr/local/lib/homelab/scripts/kennel_fw_check.py

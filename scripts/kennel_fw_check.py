@@ -64,8 +64,11 @@ def check_pve(fw_live, fw_want, net_lines, fw_status, loaded, fw_path="the live 
     if len(nets) != 1 or not nets[0].startswith("net0:"):
         bad.append(f"NICs: {nets}")
     else:
-        kv = dict(p.split("=", 1) for p in nets[0].split(": ", 1)[1].split(",") if "=" in p)
-        if kv.get("bridge") != "vmbr0" or kv.get("tag") != "5" or kv.get("firewall") != "1" or "trunks" in kv:
+        parts = [p.split("=", 1) for p in nets[0].split(": ", 1)[1].split(",")]
+        kv = dict(p for p in parts if len(p) == 2)
+        if len(kv) != len(parts):   # a repeated key, or a part with no "="
+            bad.append(f"net0 does not parse cleanly: {nets[0]}")
+        elif kv.get("bridge") != "vmbr0" or kv.get("tag") != "5" or kv.get("firewall") != "1" or "trunks" in kv:
             bad.append(f"net0 not vmbr0/tag=5/firewall=1/no trunks: {nets[0]}")
     if fw_status.strip() != "Status: enabled/running":
         bad.append(f"pve-firewall: {fw_status.strip()!r}")   # also catches "pending changes"
@@ -91,11 +94,11 @@ def check_dream(want, rules, groups, networks):
         if len(got) != 1:
             bad.append(f"rule {name}: found {len(got)}")
             continue
-        have = {k: v for k, v in got[0].items() if k not in META
-                and v not in ([], "")}   # UniFi pads unused selectors with [] or ""
+        have = {k: v for k, v in got[0].items() if k not in META}
         exp = {k: ([ids.get(x, x) for x in v] if isinstance(v, list) else ids.get(v, v))
-               for k, v in want_r.items() if v not in ([], "")}
-        if have != exp:
+               for k, v in want_r.items()}
+        # Exact, empty values and types included (True is not 1).
+        if json.dumps(have, sort_keys=True) != json.dumps(exp, sort_keys=True):
             diff = {k: (exp.get(k), have.get(k)) for k in exp.keys() | have.keys() if exp.get(k) != have.get(k)}
             bad.append(f"rule {name} differs (want, have): {diff}")
     # Anything else enabled in the same ruleset, ahead of the last listed rule
@@ -176,6 +179,8 @@ def self_test():
     assert check_pve(fw, fw, ["net0: virtio=x,bridge=vmbr0,firewall=1"], st, good), "untagged"
     assert check_pve(fw, fw, [net[0] + ",trunks=1;5"], st, good), "trunks"
     assert check_pve(fw, fw, net + ["net1: virtio=y,bridge=vmbr0"], st, good), "second NIC"
+    assert check_pve(fw, fw, [net[0] + ",tag=7"], st, good), "repeated key"
+    assert check_pve(fw, fw, [net[0] + ",junk"], st, good), "part with no ="
     assert check_pve(fw, fw, net, "Status: enabled/running (pending changes)", good)
 
     want = {"rules": {
@@ -194,15 +199,16 @@ def self_test():
     nets = [{"_id": "N", "name": "agents", "vlan": 5, "vlan_enabled": True, "ip_subnet": "10.9.5.1/24"}]
     ids = {"@group": "G", "@network": "N"}
     res = lambda v: [ids.get(x, x) for x in v] if isinstance(v, list) else ids.get(v, v)
-    rules = [{**{k: res(v) for k, v in r.items()}, "_id": "r", "site_id": "s", "dst_firewallgroup_ids":
-              res(r.get("dst_firewallgroup_ids", []))} for r in RULES.values()]
+    rules = [{**{k: res(v) for k, v in r.items()}, "_id": "r", "site_id": "s"} for r in RULES.values()]
     rules.append({"name": "allow-iot", "ruleset": "LAN_IN", "enabled": False, "rule_index": 20010, "action": "accept"})
     assert check_dream(want, rules, groups, nets) == [], check_dream(want, rules, groups, nets)
     mod = lambda i, **kw: [dict(r, **kw) if j == i else r for j, r in enumerate(rules)]
     assert check_dream(want, mod(1, enabled=False), groups, nets), "drop disabled"
     assert check_dream(want, mod(1, state_established=True), groups, nets), "state changed"
     assert check_dream(want, mod(1, schedule="night"), groups, nets), "a new restriction"
-    assert check_dream(want, mod(0, dst_address="10.9.9.10"), groups, nets), "allow widened"
+    assert check_dream(want, mod(1, schedule=""), groups, nets), "a new field, even empty"
+    assert check_dream(want, mod(1, enabled=1), groups, nets), "1 is not True"
+    assert check_dream(want, mod(0, dst_address="10.9.9.10"), groups, nets), "allow's destination changed"
     assert check_dream(want, rules + [{"name": "x", "ruleset": "LAN_IN", "enabled": True, "rule_index": 2000}], groups, nets)
     assert check_dream(want, rules + [rules[1]], groups, nets), "duplicate name"
     assert check_dream(want, rules[:1], groups, nets), "drop deleted"

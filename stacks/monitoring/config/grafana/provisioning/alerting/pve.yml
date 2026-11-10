@@ -219,7 +219,7 @@ groups:
         title: kennel firewall drifted
         condition: C
         for: 0s
-        noDataState: Alerting
+        noDataState: OK   # no data is kennel-fw-stale's to report
         execErrState: Alerting
         labels: {severity: critical}
         annotations:
