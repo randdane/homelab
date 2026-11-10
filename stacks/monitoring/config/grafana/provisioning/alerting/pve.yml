@@ -214,3 +214,44 @@ groups:
           - refId: C
             datasourceUid: __expr__
             model: {refId: C, type: math, expression: "$B > 1200", datasource: {type: __expr__, uid: __expr__}}
+      # kennel's two firewall layers, checked hourly on pve (scripts/kennel_fw_check.py).
+      - uid: kennel-fw-drift
+        title: kennel firewall drifted
+        condition: C
+        for: 0s
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: {severity: critical}
+        annotations:
+          summary: "kennel's firewall (pve 200.fw or the router rules) no longer matches what is recorded, or could not be read; the agents may reach the LAN. Reasons: journalctl -u pve-kennel-fw on pve"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 7200, to: 0}
+            datasourceUid: victoriametrics
+            model: {refId: A, expr: 'kennel_fw_ok', instant: true, range: false}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, datasource: {type: __expr__, uid: __expr__}}
+          - refId: C
+            datasourceUid: __expr__
+            model: {refId: C, type: math, expression: "$B == 0", datasource: {type: __expr__, uid: __expr__}}
+      - uid: kennel-fw-stale
+        title: kennel firewall check stale
+        condition: C
+        for: 10m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: {severity: warning}
+        annotations:
+          summary: "pve-kennel-fw.timer has not finished a run in 3 h, so kennel firewall drift would go unnoticed"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 7200, to: 0}
+            datasourceUid: victoriametrics
+            model: {refId: A, expr: 'time() - kennel_fw_last_run_timestamp_seconds', instant: true, range: false}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, datasource: {type: __expr__, uid: __expr__}}
+          - refId: C
+            datasourceUid: __expr__
+            model: {refId: C, type: math, expression: "$B > 10800", datasource: {type: __expr__, uid: __expr__}}

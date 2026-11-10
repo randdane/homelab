@@ -18,6 +18,8 @@
 #
 # Before the first run, by hand, because they hold secrets:
 #   - /etc/homelab/ntfy.env (NTFY_URL, NTFY_TOKEN, NTFY_TOPIC; mode 600)
+#   - /etc/homelab/unifi.key, a UniFi API key (mode 600), if the site has
+#     pve/kennel-fw.json (scripts/kennel_fw_check.py)
 #   - any PBS storage and the ntfy notification target (pve-log has both)
 #
 # NOT done here, on purpose:
@@ -69,7 +71,7 @@
         src: ../scripts/{{ item }}
         dest: "{{ scripts }}/{{ item }}"
         mode: "{{ '0644' if item.endswith('.py') else '0755' }}"
-      loop: [smart-alert.sh, smart-report.sh, notify.py, lvm_thin_metrics.py]
+      loop: [smart-alert.sh, smart-report.sh, notify.py, lvm_thin_metrics.py, kennel_fw_check.py]
 
     - name: smartd finds the credentials
       ansible.builtin.copy:
@@ -163,6 +165,54 @@
       changed_when: false
       check_mode: false
       failed_when: fw_parse.stdout != ''
+
+    # --- kennel's firewall layers, checked hourly (scripts/kennel_fw_check.py) ---
+    # Only when the site has $SITE_DIR/pve/kennel-fw.json. The reference .fw
+    # copies come from the same files written above, so the two cannot differ
+    # after a run. /etc/homelab/unifi.key is made by hand (header).
+    - name: kennel firewall expectation in the site repo
+      ansible.builtin.stat:
+        path: "{{ site_pve }}/kennel-fw.json"
+      delegate_to: localhost
+      become: false
+      register: kennel_fw
+
+    - name: kennel firewall check
+      when: kennel_fw.stat.exists
+      block:
+        - name: Reference copies of the guest firewall files
+          ansible.builtin.copy:
+            src: "{{ site_pve }}/firewall/"
+            dest: /etc/homelab/fw-want/
+            mode: "0644"
+
+        - name: Expected router rules
+          ansible.builtin.copy:
+            src: "{{ site_pve }}/kennel-fw.json"
+            dest: /etc/homelab/kennel-fw.json
+            mode: "0644"
+
+        - name: Check units
+          ansible.builtin.copy:
+            src: ../scripts/systemd/{{ item }}
+            dest: /etc/systemd/system/{{ item }}
+            mode: "0644"
+          loop: [pve-kennel-fw.service, pve-kennel-fw.timer]
+
+        - name: UniFi key made by hand
+          ansible.builtin.stat:
+            path: /etc/homelab/unifi.key
+          register: unifi_key
+
+        # Without the key every run reports drift; start once it exists.
+        - name: Check timer enabled
+          when: unifi_key.stat.exists
+          ansible.builtin.systemd_service:
+            name: pve-kennel-fw.timer
+            enabled: true
+            state: started
+            daemon_reload: true
+          ignore_errors: "{{ ansible_check_mode }}"
 
     # --- Security-only unattended upgrades in CTs ---
     - name: unattended-upgrades in each CT

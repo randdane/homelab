@@ -1,0 +1,7 @@
+[Unit]
+Description=Check kennel's two firewall layers (stacks/monitoring alerts on the result)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/lib/homelab/scripts/kennel_fw_check.py
+TimeoutStartSec=180
