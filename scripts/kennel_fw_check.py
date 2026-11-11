@@ -5,7 +5,7 @@
     kennel_fw_check.py --self-test
 
 kennel runs untrusted agents. Two independent layers keep it off the LAN:
-pve's firewall for VM 200 (200.fw) and dream's LAN In rules for the `agents`
+pve's firewall for VM 200 (200.fw) and dream's zone firewall policies for the `agents`
 VLAN (homelab-private networks.md). The playbooks check both when they run;
 nothing noticed drift between runs. This runs hourly on pve (pve-kennel-fw.timer)
 and writes kennel_fw_ok 0/1 plus a timestamp for node_exporter, so Grafana
@@ -33,12 +33,13 @@ UNIFI_KEY = "/etc/homelab/unifi.key"   # made by hand, mode 600
 DEFAULT_OUT = "/var/lib/prometheus/node-exporter/kennel_fw.prom"
 # Every rule field is compared except these, so a new restriction (schedule,
 # negation, source port...) shows up as a difference.
-META = {"_id", "site_id", "setting_preference", "external_id"}
+META = {"_id", "hits", "origin_id"}   # hits counts; origin_id is the classic rule it came from
 
 # The site's expectation, kennel-fw.json:
 #   vmid, dream (address), dream_cert_sha256 (hex sha256 of its DER cert),
-#   rules {name: every field as the UniFi API returns it; "@group"/"@network"
-#   stand for the ids of the group and network below},
+#   zone (zone_key holding the network), policies {name: [every field of each
+#   policy as the v2 API returns it]; "@group", "@network" and "@zone:<key>"
+#   stand for the ids of the group, network and zones},
 #   group {name, group_type, members}, network {name, vlan, ...}.
 # Sample: self_test(). Live values: homelab-private networks.md.
 
@@ -75,10 +76,22 @@ def check_pve(fw_live, fw_want, net_lines, fw_status, loaded, fw_path="the live 
     return bad
 
 
-def check_dream(want, rules, groups, networks):
-    """Layer 2, from the UniFi rest/firewallrule, firewallgroup, networkconf lists."""
+def resolve(v, ids):
+    """Swap the placeholders kennel-fw.json uses for dream's ids, at any depth."""
+    if isinstance(v, dict):
+        return {k: resolve(x, ids) for k, x in v.items()}
+    if isinstance(v, list):
+        return [resolve(x, ids) for x in v]
+    return ids.get(v, v) if isinstance(v, str) else v
+
+
+def check_dream(want, policies, groups, networks, zones):
+    """Layer 2, from the UniFi zone-based firewall-policies and zone lists, and
+    the rest/firewallgroup and networkconf lists. Dream moved from the classic
+    LAN In rules to zones in Network 11 (2026-11-11): each rule became one
+    policy per destination zone, all from the zone holding `agents`."""
     bad = []
-    GROUP, NETWORK, RULES = want["group"], want["network"], want["rules"]
+    GROUP, NETWORK, POLICIES = want["group"], want["network"], want["policies"]
     g = [x for x in groups if x.get("name") == GROUP["name"]]
     n = [x for x in networks if x.get("name") == NETWORK["name"]]
     if len(g) != 1 or len(n) != 1:
@@ -88,30 +101,41 @@ def check_dream(want, rules, groups, networks):
         bad.append(f"group {GROUP['name']} is {g.get('group_type')} {sorted(g.get('group_members', []))}")
     if {k: n.get(k) for k in NETWORK} != NETWORK:
         bad.append(f"network {NETWORK['name']} is {({k: n.get(k) for k in NETWORK})}")
-    ids = {"@group": g["_id"], "@network": n["_id"]}
-    for name, want_r in RULES.items():
-        got = [r for r in rules if r.get("name") == name]
-        if len(got) != 1:
-            bad.append(f"rule {name}: found {len(got)}")
-            continue
-        have = {k: v for k, v in got[0].items() if k not in META}
-        exp = {k: ([ids.get(x, x) for x in v] if isinstance(v, list) else ids.get(v, v))
-               for k, v in want_r.items()}
+    keys = [z.get("zone_key") for z in zones]
+    if len(set(keys)) != len(keys):
+        return bad + [f"zone keys not unique: {keys}"]
+    ids = {"@group": g["_id"], "@network": n["_id"], **{f"@zone:{z['zone_key']}": z["_id"] for z in zones}}
+    src = [z for z in zones if n["_id"] in z.get("network_ids", [])]
+    if len(src) != 1 or src[0].get("zone_key") != want["zone"]:
+        bad.append(f"network {NETWORK['name']} is in zones {[z.get('zone_key') for z in src]}, want {want['zone']}")
+    for name, want_list in POLICIES.items():
+        got = sorted(([{k: v for k, v in p.items() if k not in META} for p in policies if p.get("name") == name]),
+                     key=lambda p: json.dumps(p, sort_keys=True))
+        exp = sorted(resolve(want_list, ids), key=lambda p: json.dumps(p, sort_keys=True))
         # Exact, empty values and types included (True is not 1).
-        if json.dumps(have, sort_keys=True) != json.dumps(exp, sort_keys=True):
-            diff = {k: (exp.get(k), have.get(k)) for k in exp.keys() | have.keys() if exp.get(k) != have.get(k)}
-            bad.append(f"rule {name} differs (want, have): {diff}")
-    # Anything else enabled in the same ruleset, ahead of the last listed rule
-    # (the drop), could let agents through first: allow none (Codex review).
-    last = max(RULES.values(), key=lambda r: r["rule_index"])
-    for r in rules:
-        if (r.get("ruleset") == last["ruleset"] and r.get("enabled") and r.get("name") not in RULES
-                and r.get("rule_index", 99999) < last["rule_index"]):
-            bad.append(f"rule {r.get('name')} ({r.get('rule_index')}) runs before {last['name']}")
+        if json.dumps(got, sort_keys=True) != json.dumps(exp, sort_keys=True):
+            bad.append(f"policy {name} differs: want {len(exp)}, have {len(got)}; "
+                       f"have {json.dumps(got, sort_keys=True)}")
+    # The block must reach every zone that holds a network: a zone added later
+    # (a network moved to Dmz, say) would otherwise be open to agents.
+    last = max(POLICIES, key=lambda k: max(p["index"] for p in POLICIES[k]))
+    covered = {ids.get(p["destination"]["zone_id"]) for p in POLICIES[last]}
+    for z in zones:
+        if z.get("network_ids") and z["_id"] not in covered:
+            bad.append(f"zone {z.get('zone_key')} holds networks but {last} does not cover it")
+    # Anything else enabled in the same zone pair, ahead of the block, could
+    # let agents through first: allow none (Codex review).
+    for b in resolve(POLICIES[last], ids):
+        pair = (b["source"]["zone_id"], b["destination"]["zone_id"])
+        for p in policies:
+            if (p.get("enabled") is not False and p.get("name") not in POLICIES
+                    and (p.get("source", {}).get("zone_id"), p.get("destination", {}).get("zone_id")) == pair
+                    and p.get("index", -1) < b["index"]):
+                bad.append(f"policy {p.get('name')} ({p.get('index')}) runs before {last} in {pair}")
     return bad
 
 
-def unifi(host, path, key, pin):
+def unifi(host, path, key, pin, v2=False):
     """GET from dream. The key is sent only after the cert matches the pin."""
     ctx = ssl.create_default_context()
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE   # self-signed: pinned below
@@ -119,11 +143,13 @@ def unifi(host, path, key, pin):
     c.connect()
     if hashlib.sha256(c.sock.getpeercert(binary_form=True)).hexdigest() != pin:
         raise RuntimeError(f"{host}'s TLS cert does not match the pin; not sending the key")
-    c.request("GET", f"/proxy/network/api/s/default/rest/{path}", headers={"X-API-KEY": key})
+    url = f"/proxy/network/v2/api/site/default/{path}" if v2 else f"/proxy/network/api/s/default/rest/{path}"
+    c.request("GET", url, headers={"X-API-KEY": key})
     r = c.getresponse()
     if r.status != 200:
         raise RuntimeError(f"{path}: HTTP {r.status}")
-    return json.loads(r.read())["data"]
+    d = json.loads(r.read())
+    return d if v2 else d["data"]
 
 
 def render(ok, now):
@@ -153,8 +179,9 @@ def main():
         bad.append(f"pve layer not read: {e!r}")
     try:
         key = open(UNIFI_KEY).read().strip()
-        api = lambda p: unifi(want["dream"], p, key, want["dream_cert_sha256"].lower())
-        bad += check_dream(want, api("firewallrule"), api("firewallgroup"), api("networkconf"))
+        api = lambda p, v2=False: unifi(want["dream"], p, key, want["dream_cert_sha256"].lower(), v2)
+        bad += check_dream(want, api("firewall-policies", True), api("firewallgroup"), api("networkconf"),
+                           api("firewall/zone", True))
     except Exception as e:
         bad.append(f"router layer not read: {e!r}")
     for b in bad:
@@ -183,38 +210,52 @@ def self_test():
     assert check_pve(fw, fw, [net[0] + ",junk"], st, good), "part with no ="
     assert check_pve(fw, fw, net, "Status: enabled/running (pending changes)", good)
 
-    want = {"rules": {
-        "allow-dns": {"action": "accept", "dst_address": "10.9.9.9", "dst_port": "53", "enabled": True,
-                      "name": "allow-dns", "protocol": "tcp_udp", "rule_index": 20000, "ruleset": "LAN_IN",
-                      "src_firewallgroup_ids": ["@group"], "state_new": False},
-        "block-private": {"action": "drop", "dst_firewallgroup_ids": ["@group"], "enabled": True,
-                          "name": "block-private", "protocol": "all", "rule_index": 20001, "ruleset": "LAN_IN",
-                          "src_networkconf_id": "@network", "state_established": False, "state_new": True}},
+    pol = lambda name, act, idx, dz, **kw: {
+        "action": act, "enabled": True, "index": idx, "name": name, "predefined": False, "protocol": "all",
+        "connection_states": ["NEW", "INVALID"], "schedule": {"mode": "ALWAYS"},
+        "source": {"zone_id": "@zone:internal", "network_ids": ["@network"], "matching_target": "NETWORK"},
+        "destination": {"zone_id": dz, "ip_group_id": "@group", "matching_target": "IP"}, **kw}
+    dzs = ["@zone:internal", "@zone:external"]
+    want = {"zone": "internal", "policies": {
+        "allow-dns": [pol("allow-dns", "ALLOW", 10000, z, protocol="tcp_udp") for z in dzs],
+        "block-private": [pol("block-private", "BLOCK", 10001, z) for z in dzs]},
         "group": {"name": "rfc1918", "group_type": "address-group",
                   "members": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]},
         "network": {"name": "agents", "vlan": 5, "vlan_enabled": True, "ip_subnet": "10.9.5.1/24"}}
-    RULES = want["rules"]
     groups = [{"_id": "G", "name": "rfc1918", "group_type": "address-group", "site_id": "s",
                "group_members": ["192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12"]}]
     nets = [{"_id": "N", "name": "agents", "vlan": 5, "vlan_enabled": True, "ip_subnet": "10.9.5.1/24"}]
-    ids = {"@group": "G", "@network": "N"}
-    res = lambda v: [ids.get(x, x) for x in v] if isinstance(v, list) else ids.get(v, v)
-    rules = [{**{k: res(v) for k, v in r.items()}, "_id": "r", "site_id": "s"} for r in RULES.values()]
-    rules.append({"name": "allow-iot", "ruleset": "LAN_IN", "enabled": False, "rule_index": 20010, "action": "accept"})
-    assert check_dream(want, rules, groups, nets) == [], check_dream(want, rules, groups, nets)
-    mod = lambda i, **kw: [dict(r, **kw) if j == i else r for j, r in enumerate(rules)]
-    assert check_dream(want, mod(1, enabled=False), groups, nets), "drop disabled"
-    assert check_dream(want, mod(1, state_established=True), groups, nets), "state changed"
-    assert check_dream(want, mod(1, schedule="night"), groups, nets), "a new restriction"
-    assert check_dream(want, mod(1, schedule=""), groups, nets), "a new field, even empty"
-    assert check_dream(want, mod(1, enabled=1), groups, nets), "1 is not True"
-    assert check_dream(want, mod(0, dst_address="10.9.9.10"), groups, nets), "allow's destination changed"
-    assert check_dream(want, rules + [{"name": "x", "ruleset": "LAN_IN", "enabled": True, "rule_index": 2000}], groups, nets)
-    assert check_dream(want, rules + [rules[1]], groups, nets), "duplicate name"
-    assert check_dream(want, rules[:1], groups, nets), "drop deleted"
-    assert check_dream(want, rules, [dict(groups[0], group_members=["10.0.0.0/8"])], nets), "group shrunk"
-    assert check_dream(want, rules, groups, [dict(nets[0], vlan=7)]), "network moved"
-    assert check_dream(want, [], [], []), "zone firewall or empty API"
+    zones = [{"_id": "ZI", "zone_key": "internal", "network_ids": ["L", "N"]},
+             {"_id": "ZE", "zone_key": "external", "network_ids": ["W"]},
+             {"_id": "ZG", "zone_key": "gateway", "network_ids": []}]
+    ids = {"@group": "G", "@network": "N", "@zone:internal": "ZI", "@zone:external": "ZE"}
+    live = [dict(p, _id=f"p{i}", hits=i) for i, p in enumerate(resolve(
+        [p for ps in want["policies"].values() for p in ps], ids))]
+    live.append(dict(pol("allow-iot", "ALLOW", 10002, "ZI"), enabled=False, source={"zone_id": "ZI"}))
+    live.append(dict(pol("Allow All Traffic", "ALLOW", 2147483647, "ZI"), predefined=True, source={"zone_id": "ZI"}))
+    ok = lambda p, g=groups, n=nets, z=zones: check_dream(want, p, g, n, z)
+    assert ok(live) == [], ok(live)
+    mod = lambda i, **kw: [dict(p, **kw) if j == i else p for j, p in enumerate(live)]
+    assert ok(mod(3, enabled=False)), "one block disabled"
+    assert ok(mod(3, connection_states=["NEW", "INVALID", "ESTABLISHED"])), "state changed"
+    assert ok(mod(3, schedule={"mode": "CUSTOM"})), "a new restriction"
+    assert ok(mod(3, logging="")), "a new field, even empty"
+    assert ok(mod(3, enabled=1)), "1 is not True"
+    assert ok(mod(0, destination={**live[0]["destination"], "ips": ["10.9.9.10"]})), "nested field changed"
+    assert ok(mod(2, index=1)), "block moved ahead of the allow"
+    first = lambda **kw: live + [dict(pol("x", "ALLOW", 2000, "ZE"), source={"zone_id": "ZI"}, **kw)]
+    assert ok(first()), "enabled policy ahead of the block"
+    assert ok(first(enabled=None)), "enabled not False counts as on"
+    assert ok(first(enabled=False)) == [], "disabled policy ahead is fine"
+    assert ok(live + [live[3]]), "duplicate policy"
+    assert ok(live[:3] + live[4:]), "block missing from one zone"
+    assert ok(live, z=zones + [{"_id": "ZD", "zone_key": "dmz", "network_ids": ["X"]}]), "uncovered zone"
+    assert ok(live, z=[dict(zones[0], network_ids=["L"]), zones[1], dict(zones[2], network_ids=["N"])]), "agents moved zone"
+    assert ok(live, z=zones + [dict(zones[2], _id="ZG2")]), "duplicate zone key"
+    assert ok(live, [dict(groups[0], group_members=["10.0.0.0/8"])]), "group shrunk"
+    assert ok(live, n=[dict(nets[0], vlan=7)]), "network moved"
+    assert ok([], [], [], []), "empty API"
+    assert ok([], z=zones), "no policies"
     assert render(False, 5) .startswith("# HELP") and "kennel_fw_ok 0\n" in render(False, 5)
     print("self-test passed")
 
