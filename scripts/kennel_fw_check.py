@@ -33,7 +33,7 @@ UNIFI_KEY = "/etc/homelab/unifi.key"   # made by hand, mode 600
 DEFAULT_OUT = "/var/lib/prometheus/node-exporter/kennel_fw.prom"
 # Every rule field is compared except these, so a new restriction (schedule,
 # negation, source port...) shows up as a difference.
-META = {"_id", "hits", "origin_id"}   # hits counts; origin_id is the classic rule it came from
+META = {"_id", "hits", "last_hit", "origin_id"}   # hits, last_hit: counters; origin_id is the classic rule it came from
 
 # The site's expectation, kennel-fw.json:
 #   vmid, dream (address), dream_cert_sha256 (hex sha256 of its DER cert),
@@ -229,7 +229,7 @@ def self_test():
              {"_id": "ZE", "zone_key": "external", "network_ids": ["W"]},
              {"_id": "ZG", "zone_key": "gateway", "network_ids": []}]
     ids = {"@group": "G", "@network": "N", "@zone:internal": "ZI", "@zone:external": "ZE"}
-    live = [dict(p, _id=f"p{i}", hits=i) for i, p in enumerate(resolve(
+    live = [dict(p, _id=f"p{i}", hits=i, **({"last_hit": 1794405045984} if i else {})) for i, p in enumerate(resolve(
         [p for ps in want["policies"].values() for p in ps], ids))]
     live.append(dict(pol("allow-iot", "ALLOW", 10002, "ZI"), enabled=False, source={"zone_id": "ZI"}))
     live.append(dict(pol("Allow All Traffic", "ALLOW", 2147483647, "ZI"), predefined=True, source={"zone_id": "ZI"}))
