@@ -116,22 +116,23 @@ def check_dream(want, policies, groups, networks, zones):
         if json.dumps(got, sort_keys=True) != json.dumps(exp, sort_keys=True):
             bad.append(f"policy {name} differs: want {len(exp)}, have {len(got)}; "
                        f"have {json.dumps(got, sort_keys=True)}")
-    # The block must reach every zone that holds a network: a zone added later
-    # (a network moved to Dmz, say) would otherwise be open to agents.
-    last = max(POLICIES, key=lambda k: max(p["index"] for p in POLICIES[k]))
-    covered = {ids.get(p["destination"]["zone_id"]) for p in POLICIES[last]}
+    # The blocks together must reach the router itself (Gateway) and every
+    # zone that holds a network: a zone added later (a network moved to Dmz,
+    # say) would otherwise be open to agents.
+    blocks = [r for ps in POLICIES.values() for r in resolve(ps, ids) if r["action"] == "BLOCK"]
+    covered = {r["destination"]["zone_id"] for r in blocks}
     for z in zones:
-        if z.get("network_ids") and z["_id"] not in covered:
-            bad.append(f"zone {z.get('zone_key')} holds networks but {last} does not cover it")
-    # Anything else enabled in the same zone pair, ahead of the block, could
+        if (z.get("network_ids") or z.get("zone_key") == "gateway") and z["_id"] not in covered:
+            bad.append(f"zone {z.get('zone_key')} is not covered by a block policy")
+    # Anything else enabled in the same zone pair, ahead of a block, could
     # let agents through first: allow none (Codex review).
-    for b in resolve(POLICIES[last], ids):
-        pair = (b["source"]["zone_id"], b["destination"]["zone_id"])
+    for r in blocks:
+        pair = (r["source"]["zone_id"], r["destination"]["zone_id"])
         for p in policies:
             if (p.get("enabled") is not False and p.get("name") not in POLICIES
                     and (p.get("source", {}).get("zone_id"), p.get("destination", {}).get("zone_id")) == pair
-                    and p.get("index", -1) < b["index"]):
-                bad.append(f"policy {p.get('name')} ({p.get('index')}) runs before {last} in {pair}")
+                    and p.get("index", -1) < r["index"]):
+                bad.append(f"policy {p.get('name')} ({p.get('index')}) runs before {r['name']} in {pair}")
     return bad
 
 
@@ -218,7 +219,9 @@ def self_test():
     dzs = ["@zone:internal", "@zone:external"]
     want = {"zone": "internal", "policies": {
         "allow-dns": [pol("allow-dns", "ALLOW", 10000, z, protocol="tcp_udp") for z in dzs],
-        "block-private": [pol("block-private", "BLOCK", 10001, z) for z in dzs]},
+        "block-private": [pol("block-private", "BLOCK", 10001, z) for z in dzs],
+        "allow-dhcp": [pol("allow-dhcp", "ALLOW", 10001, "@zone:gateway", protocol="udp")],
+        "block-gw": [pol("block-gw", "BLOCK", 10002, "@zone:gateway")]},
         "group": {"name": "rfc1918", "group_type": "address-group",
                   "members": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]},
         "network": {"name": "agents", "vlan": 5, "vlan_enabled": True, "ip_subnet": "10.9.5.1/24"}}
@@ -228,7 +231,7 @@ def self_test():
     zones = [{"_id": "ZI", "zone_key": "internal", "network_ids": ["L", "N"]},
              {"_id": "ZE", "zone_key": "external", "network_ids": ["W"]},
              {"_id": "ZG", "zone_key": "gateway", "network_ids": []}]
-    ids = {"@group": "G", "@network": "N", "@zone:internal": "ZI", "@zone:external": "ZE"}
+    ids = {"@group": "G", "@network": "N", "@zone:internal": "ZI", "@zone:external": "ZE", "@zone:gateway": "ZG"}
     live = [dict(p, _id=f"p{i}", hits=i, **({"last_hit": 1794405045984} if i else {})) for i, p in enumerate(resolve(
         [p for ps in want["policies"].values() for p in ps], ids))]
     live.append(dict(pol("allow-iot", "ALLOW", 10002, "ZI"), enabled=False, source={"zone_id": "ZI"}))
@@ -256,6 +259,11 @@ def self_test():
     assert ok(live, n=[dict(nets[0], vlan=7)]), "network moved"
     assert ok([], [], [], []), "empty API"
     assert ok([], z=zones), "no policies"
+    gw = [p for p in live if p["name"] == "block-gw"][0]
+    assert ok(live + [dict(pol("x", "ALLOW", 1, "ZG"), source={"zone_id": "ZI"})]), "allow ahead of the gateway block"
+    assert ok([p for p in live if p is not gw]), "gateway block deleted"
+    nogw = {**want, "policies": {k: v for k, v in want["policies"].items() if k != "block-gw"}}
+    assert check_dream(nogw, [p for p in live if p is not gw], groups, nets, zones), "gateway not required"
     assert render(False, 5) .startswith("# HELP") and "kennel_fw_ok 0\n" in render(False, 5)
     print("self-test passed")
 
