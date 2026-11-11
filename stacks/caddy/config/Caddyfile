@@ -608,7 +608,8 @@ jellyfin.{$DUCKDNS_HOST} {
 
 # kennel's credential proxy, and nothing else (kennel README, "Keys and the
 # proxy"). Agents never reach this: their proxy on kennel does, holding a
-# client certificate per agent from a kennel-only CA (kennel-ca.crt here).
+# client certificate per agent from a kennel-only CA. Its cert, kennel-ca.crt,
+# is site data: copied here from $SITE_DIR/stacks/caddy/, not committed.
 #
 # An internal name with `tls internal`: no public certificate, so nothing in
 # Certificate Transparency, and the proxy trusts this Caddy's own local root.
