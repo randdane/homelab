@@ -197,6 +197,9 @@ def wildcard_fallback_problem(text):
 # Listing a host here is a decision that nobody gets told when it breaks from
 # off-LAN -- so it needs a reason, the same way PUBLIC_HOSTS does.
 NOT_PHONE_PROBED = {
+    "agents.kennel.internal":
+        "kennel's credential proxy only: needs its client certificate and "
+        "kennel's address, so the phone cannot reach it by design",
     "mealier.{$PUBLIC_DOMAIN}":
         "on trial beside Mealie; a probe would wake it through Sablier "
         "every run. Move to PHONE_PROBES if it replaces Mealie",

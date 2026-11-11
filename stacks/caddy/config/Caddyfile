@@ -605,3 +605,34 @@ jellyfin.{$DUCKDNS_HOST} {
 	}
 	log
 }
+
+# kennel's credential proxy, and nothing else (kennel README, "Keys and the
+# proxy"). Agents never reach this: their proxy on kennel does, holding a
+# client certificate per agent from a kennel-only CA (kennel-ca.crt here).
+#
+# An internal name with `tls internal`: no public certificate, so nothing in
+# Certificate Transparency, and the proxy trusts this Caddy's own local root.
+# Its own site because client_auth is per site; putting it on the wildcard
+# would lock out every browser. strict_sni_host is on by default once client
+# auth is configured, so a request with another name's SNI and this Host is
+# refused -- the boundary test checks that.
+#
+# Both gates, ANDed: a cert from that CA AND the one address it may come from.
+# {$KENNEL_PROXY_IP} is kennel's own address (.env); the rest of its VLAN is
+# not admitted. Unset, the gate admits nothing -- fails closed.
+agents.kennel.internal {
+	tls internal {
+		client_auth {
+			mode require_and_verify
+			trust_pool file /etc/caddy/kennel-ca.crt
+		}
+	}
+	@kennel remote_ip {$KENNEL_PROXY_IP}
+	handle @kennel {
+		reverse_proxy life-queue-app:3456
+	}
+	handle {
+		abort
+	}
+	log
+}
