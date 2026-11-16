@@ -254,3 +254,12 @@ def test_a_hyphenated_matcher_name_is_read_with_its_gate():
     skipped the block entirely, so a gated host read as missing."""
     text = TWO_NAME_MATCHER_BRACED.replace("@both", "@it-tools")
     assert caddy_hosts(text) == {"a.example": True, "b.example": True}
+
+
+def test_mtls_host_counts_a_refused_handshake_as_refused():
+    from check_vhosts import ABORT_EXITS, MTLS_HOSTS
+    exits = ABORT_EXITS | MTLS_HOSTS["agents.kennel.internal"]
+    assert negative_verdict(0, 55, exits)[0] == "pass"
+    assert negative_verdict(0, 0, exits)[0] == "fail"
+    # 55 stays inconclusive for ordinary gated hosts
+    assert negative_verdict(0, 55)[0] == "inconclusive"

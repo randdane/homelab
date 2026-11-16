@@ -264,6 +264,14 @@ CONTAINER = "uptime-kuma"
 # spurious failure.
 ABORT_EXITS = frozenset({52, 56, 92})
 
+# Hosts behind `tls internal` + `client_auth require_and_verify`. Caddy's local
+# root is not in the container's trust store, so the probe skips server
+# verification (-k): a refusal proves nothing about the server's identity
+# anyway. Without a client cert the handshake is refused before the
+# remote_ip gate runs, so this proves the mTLS layer refuses, not remote_ip.
+# Measured 2026-11-16 from uptime-kuma: curl 55 (reset by peer).
+MTLS_HOSTS = {"agents.kennel.internal": frozenset({55})}
+
 
 def expand(identity):
     """`vikunja.{$PUBLIC_DOMAIN}` -> a real hostname, or None if unset.
@@ -297,7 +305,7 @@ def _run(cmd, timeout=30):
                           stdin=subprocess.DEVNULL)
 
 
-def probe(host, ip, container=CONTAINER, timeout=8):
+def probe(host, ip, container=CONTAINER, timeout=8, insecure=False):
     """curl `host` from inside the container, pinned to Caddy's bridge address.
 
     Returns curl's exit code. The container's source address is a bridge
@@ -306,7 +314,8 @@ def probe(host, ip, container=CONTAINER, timeout=8):
     """
     return _run([
         "docker", "exec", container,
-        "curl", "-sS", "-o", "/dev/null", "-m", str(timeout),
+        "curl", "-sS", *(["-k"] if insecure else []),
+        "-o", "/dev/null", "-m", str(timeout),
         "--resolve", f"{host}:443:{ip}", f"https://{host}/",
     ], timeout=timeout + 10).returncode
 
@@ -410,8 +419,11 @@ def main():
                         if name is None:
                             unchecked.append(f"{host}: unset variable, cannot probe")
                             continue
+                        mtls = MTLS_HOSTS.get(host)
                         verdict, detail = negative_verdict(
-                            control_exit, probe(name, bridge_ip))
+                            control_exit,
+                            probe(name, bridge_ip, insecure=bool(mtls)),
+                            ABORT_EXITS | (mtls or frozenset()))
                         if verdict == "fail":
                             problems.append(f"{host}: {detail}")
                         elif verdict == "inconclusive":
