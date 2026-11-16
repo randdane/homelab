@@ -2,7 +2,7 @@
 #
 # Caddy plugins are not loadable at runtime -- Go has no dynamic module
 # loading here, so "installing" a plugin means rebuilding the binary. That is
-# why this stack builds an image instead of pulling `caddy:2.11.7`.
+# why this stack builds an image instead of pulling `caddy:2.11.9`.
 #
 # Pin both stages to the SAME Caddy version. The builder produces the binary
 # and the runtime stage supplies everything else (entrypoint, CA bundle,
@@ -27,7 +27,7 @@
 # Every plugin is PINNED, and that is not tidiness. An unpinned `--with`
 # resolves to whatever is latest at build time, so `docker compose build`
 # tomorrow can produce different code under the same `homelab/caddy-crowdsec:
-# 2.11.7` tag -- a tag that names the Caddy version and reads as if it pinned
+# 2.11.9` tag -- a tag that names the Caddy version and reads as if it pinned
 # the whole image. The things that would change silently include the only
 # active defence on the public vhost and the module that holds the Porkbun
 # API credentials.
@@ -44,21 +44,21 @@
 #
 # Bumping any of them is a deliberate edit here, followed by that same command
 # against the rebuilt image.
-FROM caddy:2.11.7-builder AS builder
+FROM caddy:2.11.9-builder AS builder
 
 RUN xcaddy build \
     --with github.com/hslatman/caddy-crowdsec-bouncer/http@v0.15.0 \
     --with github.com/caddy-dns/porkbun@v0.3.1 \
     --with github.com/sablierapp/sablier-caddy-plugin@v1.0.2
 
-FROM caddy:2.11.7
+FROM caddy:2.11.9
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 
 # So the image says what is in it without running it. The tag cannot: it names
 # the Caddy version only, and both plugins move independently of Caddy.
 LABEL org.opencontainers.image.title="caddy-crowdsec-porkbun" \
-      org.opencontainers.image.description="Caddy 2.11.7 with the CrowdSec bouncer, the Porkbun DNS provider and the Sablier handler compiled in" \
-      homelab.caddy.version="2.11.7" \
+      org.opencontainers.image.description="Caddy 2.11.9 with the CrowdSec bouncer, the Porkbun DNS provider and the Sablier handler compiled in" \
+      homelab.caddy.version="2.11.9" \
       homelab.plugin.crowdsec-bouncer="v0.15.0" \
       homelab.plugin.porkbun="v0.3.1" \
       homelab.plugin.sablier="v1.0.2"
