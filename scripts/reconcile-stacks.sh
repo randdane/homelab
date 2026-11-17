@@ -46,6 +46,16 @@
 # exit status.
 set -uo pipefail
 
+# Never as root. Compose interpolates ${HOME} into bind paths (backup,
+# karakeep, paperless-samba), and sudo sets HOME=/root: a root run recreates
+# those three onto empty /root/... directories, and the next run as the
+# owner recreates them back. Happened 2026-11-17. Start the unit instead:
+#     sudo systemctl start homelab-reconcile
+if [ "$(id -u)" -eq 0 ]; then
+    echo "reconcile-stacks: refusing to run as root (HOME=$HOME would move \${HOME} bind mounts); use: sudo systemctl start homelab-reconcile" >&2
+    exit 2
+fi
+
 DRY=()
 DRYLABEL=""
 case "${1-}" in
